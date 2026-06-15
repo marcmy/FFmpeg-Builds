@@ -10,7 +10,7 @@ permissions:
   packages: read
 
 concurrency:
-  group: hourly-ffmpeg-win64-gpl
+  group: hourly-ffmpeg-win64-gpl-shared
   cancel-in-progress: false
 
 env:
@@ -44,7 +44,7 @@ jobs:
         env:
           GH_TOKEN: ${{ github.token }}
         run: |
-          tag="ffmpeg-${{ steps.upstream.outputs.short }}-win64-gpl"
+          tag="ffmpeg-${{ steps.upstream.outputs.short }}-win64-gpl-shared"
 
           if gh release view "$tag" --repo "$GITHUB_REPOSITORY" >/dev/null 2>&1; then
             echo "Already released $tag"
@@ -63,10 +63,6 @@ jobs:
     env:
       FFMPEG_SHA: ${{ needs.check.outputs.sha }}
       FFMPEG_SHORT: ${{ needs.check.outputs.short }}
-
-      # Use your fork's package namespace once its images exist.
-      # For first testing, you can temporarily set this to BtbN/FFmpeg-Builds.
-      GITHUB_REPOSITORY: marcmy/FFmpeg-Builds
 
       FFMPEG_REPO_OVERRIDE: https://github.com/FFmpeg/FFmpeg.git
       GIT_BRANCH_OVERRIDE: master
@@ -108,6 +104,6 @@ jobs:
 
           gh release create "$tag" release/* \
             --repo "$GITHUB_REPOSITORY" \
-            --title "FFmpeg win64 GPL ${FFMPEG_SHORT}" \
+            --title "FFmpeg win64 GPL Shared ${FFMPEG_SHORT}" \
             --notes "Upstream FFmpeg master SHA: ${FFMPEG_SHA}" \
             --latest

@@ -1,0 +1,58 @@
+name: Build win64 nonfree marcshared FFmpeg image
+
+on:
+  workflow_dispatch:
+
+permissions:
+  contents: read
+  packages: write
+
+env:
+  TARGET: win64
+  VARIANT: nonfree-marcshared
+  SOURCE_REPO: ghcr.io/btbn/ffmpeg-builds
+  TARGET_REPO: ghcr.io/marcmy/ffmpeg-builds
+
+jobs:
+  build-image:
+    runs-on: ubuntu-latest
+
+    steps:
+      - name: Free disk space
+        run: |
+          df -h
+          sudo apt-get clean
+          docker system prune -a -f
+          sudo rm -rf /opt/ghc /usr/local/.ghcup /usr/local/lib/android
+          df -h
+
+      - name: Checkout
+        uses: actions/checkout@v6
+
+      - name: Set up Docker Buildx
+        uses: docker/setup-buildx-action@v4
+        with:
+          buildkitd-config: .github/buildkit.toml
+
+      - name: Login to GHCR
+        uses: docker/login-action@v4
+        with:
+          registry: ghcr.io
+          username: ${{ github.actor }}
+          password: ${{ github.token }}
+
+      - name: Borrow BtbN base images locally
+        run: |
+          docker pull "$SOURCE_REPO/base:latest"
+          docker pull "$SOURCE_REPO/base-win64:latest"
+
+          docker tag "$SOURCE_REPO/base:latest" "$TARGET_REPO/base:latest"
+          docker tag "$SOURCE_REPO/base-win64:latest" "$TARGET_REPO/base-win64:latest"
+
+      - name: Build win64 nonfree marcshared image
+        run: |
+          QUICKBUILD=1 NOCLEAN=1 ./makeimage.sh "$TARGET" "$VARIANT"
+
+      - name: Push win64 nonfree marcshared image
+        run: |
+          docker push "$TARGET_REPO/win64-nonfree-marcshared:latest"

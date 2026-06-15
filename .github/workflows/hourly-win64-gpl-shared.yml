@@ -90,10 +90,11 @@ jobs:
         run: |
           GITHUB_REPOSITORY=BtbN/FFmpeg-Builds ./build.sh "$TARGET" "$VARIANT"
 
-      - name: Rename artifact to upstream SHA
+      - name: Prepare release artifacts
         run: |
           mkdir release
           cp artifacts/*.zip "release/ffmpeg-${FFMPEG_SHORT}-win64-gpl-shared.zip"
+          cp artifacts/*.zip "release/ffmpeg-master-latest-win64-gpl-shared.zip"
           sha256sum release/* > release/checksums.sha256
 
       - name: Publish release

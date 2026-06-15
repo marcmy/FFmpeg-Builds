@@ -95,7 +95,7 @@ jobs:
         run: |
           mkdir release
           cp artifacts/*.zip "release/ffmpeg-${FFMPEG_SHORT}-win64-nonfree-shared-marcfull.zip"
-          cp artifacts/*.zip "release/ffmpeg-master-latest-win64-nonfree-shared-marcfull.zip"
+          cp artifacts/*.zip "release/ffmpeg-latest-win64-nonfree-marcshared.zip"
           sha256sum release/* > release/checksums.sha256
 
       - name: Publish release

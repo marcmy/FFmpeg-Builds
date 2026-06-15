@@ -41,13 +41,16 @@ jobs:
           username: ${{ github.actor }}
           password: ${{ github.token }}
 
-      - name: Borrow BtbN base images locally
+      - name: Borrow BtbN base images
         run: |
           docker pull "$SOURCE_REPO/base:latest"
           docker pull "$SOURCE_REPO/base-win64:latest"
 
           docker tag "$SOURCE_REPO/base:latest" "$TARGET_REPO/base:latest"
           docker tag "$SOURCE_REPO/base-win64:latest" "$TARGET_REPO/base-win64:latest"
+
+          docker push "$TARGET_REPO/base:latest"
+          docker push "$TARGET_REPO/base-win64:latest"
 
       - name: Build win64 nonfree marcshared image
         run: |

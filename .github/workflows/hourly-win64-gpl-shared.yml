@@ -63,6 +63,7 @@ jobs:
     env:
       FFMPEG_SHA: ${{ needs.check.outputs.sha }}
       FFMPEG_SHORT: ${{ needs.check.outputs.short }}
+      SCOOP_BUCKET_TOKEN: ${{ secrets.SCOOP_BUCKET_TOKEN }}
 
       FFMPEG_REPO_OVERRIDE: https://github.com/FFmpeg/FFmpeg.git
       GIT_BRANCH_OVERRIDE: master
@@ -108,3 +109,13 @@ jobs:
             --title "FFmpeg win64 GPL Shared Marcfull ${FFMPEG_SHORT}" \
             --notes "Upstream FFmpeg master SHA: ${FFMPEG_SHA}" \
             --latest
+
+      - name: Trigger scoop bucket excavator
+        if: env.SCOOP_BUCKET_TOKEN != ''
+        env:
+          GH_TOKEN: ${{ env.SCOOP_BUCKET_TOKEN }}
+        run: |
+          gh api repos/marcmy/scoop-bucket/dispatches \
+            -f event_type=ffmpeg-build-released \
+            -F client_payload[version]="$FFMPEG_SHORT" \
+            -F client_payload[tag]="ffmpeg-${FFMPEG_SHORT}-win64-gpl-shared-marcfull"

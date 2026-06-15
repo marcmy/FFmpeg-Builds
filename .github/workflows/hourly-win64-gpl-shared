@@ -1,0 +1,113 @@
+name: Hourly FFmpeg win64 GPL (Shared)
+
+on:
+  schedule:
+    - cron: "23 * * * *"
+  workflow_dispatch:
+
+permissions:
+  contents: write
+  packages: read
+
+concurrency:
+  group: hourly-ffmpeg-win64-gpl
+  cancel-in-progress: false
+
+env:
+  UPSTREAM_REPO: https://github.com/FFmpeg/FFmpeg.git
+  TARGET: win64
+  VARIANT: gpl-shared
+
+jobs:
+  check:
+    runs-on: ubuntu-latest
+
+    outputs:
+      changed: ${{ steps.check.outputs.changed }}
+      sha: ${{ steps.upstream.outputs.sha }}
+      short: ${{ steps.upstream.outputs.short }}
+
+    steps:
+      - name: Get upstream FFmpeg master SHA
+        id: upstream
+        run: |
+          sha="$(git ls-remote "$UPSTREAM_REPO" refs/heads/master | awk '{print $1}')"
+          short="${sha:0:12}"
+
+          echo "sha=$sha" >> "$GITHUB_OUTPUT"
+          echo "short=$short" >> "$GITHUB_OUTPUT"
+
+          echo "Upstream FFmpeg master: $sha"
+
+      - name: Check whether this SHA already has a release
+        id: check
+        env:
+          GH_TOKEN: ${{ github.token }}
+        run: |
+          tag="ffmpeg-${{ steps.upstream.outputs.short }}-win64-gpl"
+
+          if gh release view "$tag" --repo "$GITHUB_REPOSITORY" >/dev/null 2>&1; then
+            echo "Already released $tag"
+            echo "changed=false" >> "$GITHUB_OUTPUT"
+          else
+            echo "New upstream SHA"
+            echo "changed=true" >> "$GITHUB_OUTPUT"
+          fi
+
+  build:
+    needs: check
+    if: needs.check.outputs.changed == 'true'
+
+    runs-on: ubuntu-latest
+
+    env:
+      FFMPEG_SHA: ${{ needs.check.outputs.sha }}
+      FFMPEG_SHORT: ${{ needs.check.outputs.short }}
+
+      # Use your fork's package namespace once its images exist.
+      # For first testing, you can temporarily set this to BtbN/FFmpeg-Builds.
+      GITHUB_REPOSITORY: marcmy/FFmpeg-Builds
+
+      FFMPEG_REPO_OVERRIDE: https://github.com/FFmpeg/FFmpeg.git
+      GIT_BRANCH_OVERRIDE: master
+
+    steps:
+      - name: Free disk space
+        run: |
+          df -h
+          sudo apt-get clean
+          docker system prune -a -f
+          sudo rm -rf /opt/ghc /usr/local/.ghcup /usr/local/lib/android
+          df -h
+
+      - name: Checkout
+        uses: actions/checkout@v6
+
+      - name: Login to GHCR
+        uses: docker/login-action@v4
+        with:
+          registry: ghcr.io
+          username: ${{ github.actor }}
+          password: ${{ github.token }}
+
+      - name: Build FFmpeg
+        run: |
+          ./build.sh "$TARGET" "$VARIANT"
+
+      - name: Rename artifact to upstream SHA
+        run: |
+          mkdir release
+          cp artifacts/*.zip "release/ffmpeg-${FFMPEG_SHORT}-win64-gpl-shared.zip"
+          sha256sum release/* > release/checksums.sha256
+
+      - name: Publish release
+        env:
+          GH_TOKEN: ${{ github.token }}
+        run: |
+          tag="ffmpeg-${FFMPEG_SHORT}-win64-gpl-shared"
+
+          gh release create "$tag" release/* \
+            --repo "$GITHUB_REPOSITORY" \
+            --title "FFmpeg win64 GPL ${FFMPEG_SHORT}" \
+            --notes "Upstream FFmpeg master SHA: ${FFMPEG_SHA}" \
+            --latest

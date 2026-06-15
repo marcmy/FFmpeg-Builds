@@ -1,0 +1,30 @@
+name: Sync Marcfull FFmpeg build image
+
+on:
+  workflow_dispatch:
+
+permissions:
+  contents: read
+  packages: write
+
+env:
+  SOURCE_IMAGE: ghcr.io/btbn/ffmpeg-builds/win64-gpl-shared:latest
+  TARGET_IMAGE: ghcr.io/marcmy/ffmpeg-builds/win64-gpl-shared-marcfull:latest
+
+jobs:
+  sync:
+    runs-on: ubuntu-latest
+
+    steps:
+      - name: Login to GHCR
+        uses: docker/login-action@v4
+        with:
+          registry: ghcr.io
+          username: ${{ github.actor }}
+          password: ${{ github.token }}
+
+      - name: Copy BtbN shared image to marcfull image
+        run: |
+          docker pull "$SOURCE_IMAGE"
+          docker tag "$SOURCE_IMAGE" "$TARGET_IMAGE"
+          docker push "$TARGET_IMAGE"

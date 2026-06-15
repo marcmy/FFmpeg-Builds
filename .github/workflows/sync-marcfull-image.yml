@@ -1,4 +1,4 @@
-name: Build Marcfull nonfree FFmpeg image
+name: Build win64 nonfree marcshared FFmpeg image
 
 on:
   workflow_dispatch:
@@ -9,7 +9,7 @@ permissions:
 
 env:
   TARGET: win64
-  VARIANT: nonfree-shared-marcfull
+  VARIANT: nonfree-marcshared
   SOURCE_REPO: ghcr.io/btbn/ffmpeg-builds
   TARGET_REPO: ghcr.io/marcmy/ffmpeg-builds
 
@@ -49,10 +49,10 @@ jobs:
           docker tag "$SOURCE_REPO/base:latest" "$TARGET_REPO/base:latest"
           docker tag "$SOURCE_REPO/base-win64:latest" "$TARGET_REPO/base-win64:latest"
 
-      - name: Build Marcfull nonfree shared image
+      - name: Build win64 nonfree marcshared image
         run: |
           QUICKBUILD=1 NOCLEAN=1 ./makeimage.sh "$TARGET" "$VARIANT"
 
-      - name: Push Marcfull nonfree shared image
+      - name: Push win64 nonfree marcshared image
         run: |
-          docker push "$TARGET_REPO/win64-nonfree-shared-marcfull:latest"
+          docker push "$TARGET_REPO/win64-nonfree-marcshared:latest"

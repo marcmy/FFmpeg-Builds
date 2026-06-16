@@ -4,6 +4,12 @@ on:
   schedule:
     - cron: "23 * * * *"
   workflow_dispatch:
+    inputs:
+      force:
+        description: "Build even when upstream FFmpeg SHA already has a release"
+        required: false
+        type: boolean
+        default: false
 
 permissions:
   contents: write
@@ -26,6 +32,8 @@ jobs:
       changed: ${{ steps.check.outputs.changed }}
       sha: ${{ steps.upstream.outputs.sha }}
       short: ${{ steps.upstream.outputs.short }}
+      package_version: ${{ steps.version.outputs.package_version }}
+      release_tag: ${{ steps.version.outputs.release_tag }}
 
     steps:
       - name: Get upstream FFmpeg master SHA
@@ -39,15 +47,35 @@ jobs:
 
           echo "Upstream FFmpeg master: $sha"
 
-      - name: Check whether this SHA already has a release
+      - name: Generate monotonic package version
+        id: version
+        run: |
+          package_version="$(date -u +'%Y%m%d.%H%M%S')"
+          release_tag="ffmpeg-${package_version}-win64-nonfree-marcshared"
+
+          echo "package_version=$package_version" >> "$GITHUB_OUTPUT"
+          echo "release_tag=$release_tag" >> "$GITHUB_OUTPUT"
+
+          echo "Package version: $package_version"
+          echo "Release tag: $release_tag"
+
+      - name: Check whether this upstream SHA already has a release
         id: check
         env:
           GH_TOKEN: ${{ github.token }}
+          FORCE_BUILD: ${{ github.event_name == 'workflow_dispatch' && inputs.force }}
+          FFMPEG_SHA: ${{ steps.upstream.outputs.sha }}
         run: |
-          tag="ffmpeg-${{ steps.upstream.outputs.short }}-win64-nonfree-marcshared"
+          if [[ "$FORCE_BUILD" == "true" ]]; then
+            echo "Forced build requested"
+            echo "changed=true" >> "$GITHUB_OUTPUT"
+            exit 0
+          fi
 
-          if gh release view "$tag" --repo "$GITHUB_REPOSITORY" >/dev/null 2>&1; then
-            echo "Already released $tag"
+          latest_body="$(gh release view --repo "$GITHUB_REPOSITORY" --json body -q .body 2>/dev/null || true)"
+
+          if grep -q "$FFMPEG_SHA" <<< "$latest_body"; then
+            echo "Latest release already contains upstream SHA $FFMPEG_SHA"
             echo "changed=false" >> "$GITHUB_OUTPUT"
           else
             echo "New upstream SHA"
@@ -63,6 +91,8 @@ jobs:
     env:
       FFMPEG_SHA: ${{ needs.check.outputs.sha }}
       FFMPEG_SHORT: ${{ needs.check.outputs.short }}
+      PACKAGE_VERSION: ${{ needs.check.outputs.package_version }}
+      RELEASE_TAG: ${{ needs.check.outputs.release_tag }}
       SCOOP_BUCKET_TOKEN: ${{ secrets.SCOOP_BUCKET_TOKEN }}
 
       FFMPEG_REPO_OVERRIDE: https://github.com/FFmpeg/FFmpeg.git
@@ -94,20 +124,19 @@ jobs:
       - name: Prepare release artifacts
         run: |
           mkdir release
-          cp artifacts/*.zip "release/ffmpeg-${FFMPEG_SHORT}-win64-nonfree-marcshared.zip"
-          cp artifacts/*.zip "release/ffmpeg-latest-win64-nonfree-marcshared.zip"
+          cp artifacts/*.zip "release/ffmpeg-${PACKAGE_VERSION}-win64-nonfree-marcshared.zip"
           sha256sum release/* > release/checksums.sha256
 
       - name: Publish release
         env:
           GH_TOKEN: ${{ github.token }}
         run: |
-          tag="ffmpeg-${FFMPEG_SHORT}-win64-nonfree-marcshared"
-
-          gh release create "$tag" release/* \
+          gh release create "$RELEASE_TAG" release/* \
             --repo "$GITHUB_REPOSITORY" \
-            --title "FFmpeg win64 Nonfree Marcshared ${FFMPEG_SHORT}" \
-            --notes "Upstream FFmpeg master SHA: ${FFMPEG_SHA}" \
+            --title "FFmpeg win64 Nonfree Marcshared ${PACKAGE_VERSION}" \
+            --notes "Upstream FFmpeg master SHA: ${FFMPEG_SHA}
+Upstream FFmpeg short SHA: ${FFMPEG_SHORT}
+Builder repository SHA: ${GITHUB_SHA}" \
             --latest
 
       - name: Trigger scoop bucket excavator
@@ -117,5 +146,5 @@ jobs:
         run: |
           gh api repos/marcmy/scoop-bucket/dispatches \
             -f event_type=ffmpeg-build-released \
-            -F client_payload[version]="$FFMPEG_SHORT" \
-            -F client_payload[tag]="ffmpeg-${FFMPEG_SHORT}-win64-nonfree-marcshared"
+            -F client_payload[version]="$PACKAGE_VERSION" \
+            -F client_payload[tag]="$RELEASE_TAG"

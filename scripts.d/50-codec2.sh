@@ -32,7 +32,9 @@ PY
     mkdir build && cd build
 
     cmake -DCMAKE_TOOLCHAIN_FILE="$FFBUILD_CMAKE_TOOLCHAIN" -DCMAKE_BUILD_TYPE=Release -DCMAKE_INSTALL_PREFIX="$FFBUILD_PREFIX" \
-        -DBUILD_SHARED_LIBS=OFF -DUNITTEST=OFF -DLPCNET=OFF ..
+        -DBUILD_SHARED_LIBS=OFF -DUNITTEST=OFF -DLPCNET=OFF \
+        -DCMAKE_C_FLAGS="-Dlpc_to_lsp=codec2_lpc_to_lsp -Dlsp_to_lpc=codec2_lsp_to_lpc" \
+        ..
     cmake --build . --target codec2 --parallel $(nproc)
 
     # Avoid codec2's full CMake install on MinGW: it runs the Windows

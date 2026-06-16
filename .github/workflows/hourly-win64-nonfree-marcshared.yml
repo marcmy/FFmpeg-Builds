@@ -73,11 +73,22 @@ jobs:
         id: check
         env:
           GH_TOKEN: ${{ github.token }}
-          FORCE_BUILD: ${{ github.event_name == 'push' || github.event_name == 'repository_dispatch' || (github.event_name == 'workflow_dispatch' && inputs.force) }}
+          EVENT_NAME: ${{ github.event_name }}
           FFMPEG_SHA: ${{ steps.upstream.outputs.sha }}
         run: |
-          if [[ "$FORCE_BUILD" == "true" ]]; then
-            echo "Forced build requested"
+          force_build=false
+
+          case "$EVENT_NAME" in
+            push|repository_dispatch)
+              force_build=true
+              ;;
+            workflow_dispatch)
+              force_build="$(jq -r '.inputs.force // "false"' "$GITHUB_EVENT_PATH")"
+              ;;
+          esac
+
+          if [[ "$force_build" == "true" ]]; then
+            echo "Forced build requested by $EVENT_NAME"
             echo "changed=true" >> "$GITHUB_OUTPUT"
             exit 0
           fi

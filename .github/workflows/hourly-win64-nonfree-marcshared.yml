@@ -139,12 +139,64 @@ Upstream FFmpeg short SHA: ${FFMPEG_SHORT}
 Builder repository SHA: ${GITHUB_SHA}" \
             --latest
 
-      - name: Trigger scoop bucket excavator
+      - name: Update scoop manifest
         if: env.SCOOP_BUCKET_TOKEN != ''
         env:
           GH_TOKEN: ${{ env.SCOOP_BUCKET_TOKEN }}
         run: |
-          gh api repos/marcmy/scoop-bucket/dispatches \
-            -f event_type=ffmpeg-build-released \
-            -F client_payload[version]="$PACKAGE_VERSION" \
-            -F client_payload[tag]="$RELEASE_TAG"
+          set -euo pipefail
+
+          zip_name="ffmpeg-${PACKAGE_VERSION}-win64-nonfree-marcshared.zip"
+          zip_hash="$(sha256sum "release/${zip_name}" | awk '{print $1}')"
+          zip_url="https://github.com/marcmy/FFmpeg-Builds/releases/download/${RELEASE_TAG}/${zip_name}"
+
+          git clone "https://x-access-token:${GH_TOKEN}@github.com/marcmy/scoop-bucket.git" scoop-bucket
+
+          cd scoop-bucket
+          python3 - <<'PY'
+import json
+import os
+from pathlib import Path
+
+path = Path('bucket/ffmpeg-nonfree-marcshared.json')
+data = json.loads(path.read_text())
+
+version = os.environ['PACKAGE_VERSION']
+zip_url = os.environ['zip_url']
+zip_hash = os.environ['zip_hash']
+
+data['version'] = version
+data['architecture']['64bit']['url'] = zip_url
+data['architecture']['64bit']['hash'] = zip_hash
+data['checkver'] = {
+    'script': [
+        "$ErrorActionPreference='Stop'",
+        "$headers=@{ 'User-Agent'='Scoop-Checkver'; 'Accept'='application/vnd.github+json'; 'X-GitHub-Api-Version'='2022-11-28' }",
+        "$releases=Invoke-RestMethod -Headers $headers -Uri 'https://api.github.com/repos/marcmy/FFmpeg-Builds/releases?per_page=50'",
+        "$release=$releases | Where-Object { $_.tag_name -match '^ffmpeg-[0-9]{8}\\.[0-9]{6}-win64-nonfree-marcshared$' } | Select-Object -First 1",
+        "if ($null -eq $release) { 'ffmpeg-00000000.000000-win64-nonfree-marcshared' } else { $release.tag_name }",
+    ],
+    'regex': r'^ffmpeg-([0-9]{8}\.[0-9]{6})-win64-nonfree-marcshared$',
+    'replace': '$1',
+}
+data['autoupdate'] = {
+    'architecture': {
+        '64bit': {
+            'url': 'https://github.com/marcmy/FFmpeg-Builds/releases/download/ffmpeg-$version-win64-nonfree-marcshared/ffmpeg-$version-win64-nonfree-marcshared.zip'
+        }
+    }
+}
+
+path.write_text(json.dumps(data, indent=4) + '\n')
+PY
+
+          git config user.name "github-actions[bot]"
+          git config user.email "41898282+github-actions[bot]@users.noreply.github.com"
+          git add bucket/ffmpeg-nonfree-marcshared.json
+
+          if git diff --cached --quiet; then
+            echo "Scoop manifest already up to date"
+          else
+            git commit -m "Update ffmpeg-nonfree-marcshared to ${PACKAGE_VERSION}"
+            git push
+          fi

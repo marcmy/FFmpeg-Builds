@@ -16,6 +16,7 @@ env:
 jobs:
   build-image:
     runs-on: ubuntu-latest
+    timeout-minutes: 150
 
     steps:
       - name: Free disk space
@@ -28,6 +29,14 @@ jobs:
 
       - name: Checkout
         uses: actions/checkout@v6
+
+      - name: Restore FFmpeg image build cache
+        uses: actions/cache@v4
+        with:
+          path: .cache
+          key: ffmpeg-image-cache-${{ runner.os }}-${{ env.TARGET }}-${{ env.VARIANT }}-${{ hashFiles('makeimage.sh', 'download.sh', 'generate.sh', 'util/**', 'images/**', 'variants/**', 'scripts.d/**', 'addins/**') }}
+          restore-keys: |
+            ffmpeg-image-cache-${{ runner.os }}-${{ env.TARGET }}-${{ env.VARIANT }}-
 
       - name: Set up Docker Buildx
         uses: docker/setup-buildx-action@v4
@@ -53,6 +62,8 @@ jobs:
           docker push "$TARGET_REPO/base-win64:latest"
 
       - name: Build win64 nonfree marcshared image
+        env:
+          BUILDKIT_PROGRESS: plain
         run: |
           QUICKBUILD=1 NOCLEAN=1 ./makeimage.sh "$TARGET" "$VARIANT"
 

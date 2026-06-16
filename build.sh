@@ -24,6 +24,12 @@ FFMPEG_REPO="${FFMPEG_REPO_OVERRIDE:-$FFMPEG_REPO}"
 GIT_BRANCH="${GIT_BRANCH:-master}"
 GIT_BRANCH="${GIT_BRANCH_OVERRIDE:-$GIT_BRANCH}"
 
+CCACHE_ARGS=()
+if [[ -n "${FFBUILD_CCACHE_DIR:-}" ]]; then
+    mkdir -p "$FFBUILD_CCACHE_DIR"
+    CCACHE_ARGS=( -v "$FFBUILD_CCACHE_DIR":/ccache )
+fi
+
 BUILD_SCRIPT="$(mktemp)"
 trap "rm -f -- '$BUILD_SCRIPT'" EXIT
 
@@ -31,6 +37,19 @@ cat <<EOF >"$BUILD_SCRIPT"
     set -xe
     cd /ffbuild
     rm -rf ffmpeg prefix
+
+    if command -v ccache >/dev/null 2>&1 && [[ -d /ccache ]]; then
+        export CCACHE_DIR=/ccache
+        export CCACHE_COMPILERCHECK=content
+        export CCACHE_MAXSIZE="\${FFBUILD_CCACHE_MAX_SIZE:-5G}"
+        ccache --set-config=max_size="\$CCACHE_MAXSIZE" || true
+        ccache --zero-stats || true
+
+        mkdir -p /tmp/ccache-wrappers
+        ln -sf "\$(command -v ccache)" "/tmp/ccache-wrappers/\$CC"
+        ln -sf "\$(command -v ccache)" "/tmp/ccache-wrappers/\$CXX"
+        export PATH="/tmp/ccache-wrappers:\$PATH"
+    fi
 
     git clone --filter=blob:none --branch='$GIT_BRANCH' '$FFMPEG_REPO' ffmpeg
     cd ffmpeg
@@ -42,11 +61,15 @@ cat <<EOF >"$BUILD_SCRIPT"
         --extra-version="\$(date +%Y%m%d)" || { cat ffbuild/config.log; exit 1; }
     make -j\$(nproc) V=1
     make install install-doc
+
+    if command -v ccache >/dev/null 2>&1 && [[ -d /ccache ]]; then
+        ccache --show-stats || true
+    fi
 EOF
 
 [[ -t 1 ]] && TTY_ARG="-t" || TTY_ARG=""
 
-docker run --rm -i $TTY_ARG "${UIDARGS[@]}" -v "$PWD/ffbuild":/ffbuild -v "$BUILD_SCRIPT":/build.sh "$IMAGE" bash /build.sh
+docker run --rm -i $TTY_ARG "${UIDARGS[@]}" "${CCACHE_ARGS[@]}" -v "$PWD/ffbuild":/ffbuild -v "$BUILD_SCRIPT":/build.sh "$IMAGE" bash /build.sh
 
 if [[ -n "$FFBUILD_OUTPUT_DIR" ]]; then
     mkdir -p "$FFBUILD_OUTPUT_DIR"

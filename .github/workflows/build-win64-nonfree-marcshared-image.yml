@@ -30,13 +30,14 @@ jobs:
       - name: Checkout
         uses: actions/checkout@v6
 
-      - name: Restore FFmpeg image build cache
+      - name: Restore FFmpeg source download cache
         uses: actions/cache@v4
         with:
-          path: .cache
-          key: ffmpeg-image-cache-${{ runner.os }}-${{ env.TARGET }}-${{ env.VARIANT }}-${{ hashFiles('makeimage.sh', 'download.sh', 'generate.sh', 'util/**', 'images/**', 'variants/**', 'scripts.d/**', 'addins/**') }}
+          path: .cache/downloads
+          key: ffmpeg-download-cache-${{ runner.os }}-${{ env.TARGET }}-${{ env.VARIANT }}-${{ hashFiles('download.sh', 'util/dl_functions.sh', 'variants/**', 'scripts.d/**', 'addins/**') }}
           restore-keys: |
-            ffmpeg-image-cache-${{ runner.os }}-${{ env.TARGET }}-${{ env.VARIANT }}-
+            ffmpeg-download-cache-${{ runner.os }}-${{ env.TARGET }}-${{ env.VARIANT }}-
+          save-always: true
 
       - name: Set up Docker Buildx
         uses: docker/setup-buildx-action@v4

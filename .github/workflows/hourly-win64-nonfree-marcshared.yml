@@ -103,41 +103,41 @@ jobs:
 
           cd scoop-bucket
           python3 - <<'PY'
-import json
-import os
-from pathlib import Path
+          import json
+          import os
+          from pathlib import Path
 
-path = Path('bucket/ffmpeg-nonfree-marcshared.json')
-data = json.loads(path.read_text())
+          path = Path('bucket/ffmpeg-nonfree-marcshared.json')
+          data = json.loads(path.read_text())
 
-version = os.environ['PACKAGE_VERSION']
-zip_url = os.environ['ZIP_URL']
-zip_hash = os.environ['ZIP_HASH']
+          version = os.environ['PACKAGE_VERSION']
+          zip_url = os.environ['ZIP_URL']
+          zip_hash = os.environ['ZIP_HASH']
 
-data['version'] = version
-data['architecture']['64bit']['url'] = zip_url
-data['architecture']['64bit']['hash'] = zip_hash
-data['checkver'] = {
-    'script': [
-        "$ErrorActionPreference='Stop'",
-        "$headers=@{ 'User-Agent'='Scoop-Checkver'; 'Accept'='application/vnd.github+json'; 'X-GitHub-Api-Version'='2022-11-28' }",
-        "$releases=Invoke-RestMethod -Headers $headers -Uri 'https://api.github.com/repos/marcmy/FFmpeg-Builds/releases?per_page=50'",
-        "$release=$releases | Where-Object { $_.tag_name -match '^ffmpeg-[0-9]{8}\\.[0-9]{6}-win64-nonfree-marcshared$' } | Select-Object -First 1",
-        "if ($null -eq $release) { 'ffmpeg-00000000.000000-win64-nonfree-marcshared' } else { $release.tag_name }",
-    ],
-    'regex': r'^ffmpeg-([0-9]{8}\.[0-9]{6})-win64-nonfree-marcshared$',
-    'replace': '$1',
-}
-data['autoupdate'] = {
-    'architecture': {
-        '64bit': {
-            'url': 'https://github.com/marcmy/FFmpeg-Builds/releases/download/ffmpeg-$version-win64-nonfree-marcshared/ffmpeg-$version-win64-nonfree-marcshared.zip'
-        }
-    }
-}
+          data['version'] = version
+          data['architecture']['64bit']['url'] = zip_url
+          data['architecture']['64bit']['hash'] = zip_hash
+          data['checkver'] = {
+              'script': [
+                  "$ErrorActionPreference='Stop'",
+                  "$headers=@{ 'User-Agent'='Scoop-Checkver'; 'Accept'='application/vnd.github+json'; 'X-GitHub-Api-Version'='2022-11-28' }",
+                  "$releases=Invoke-RestMethod -Headers $headers -Uri 'https://api.github.com/repos/marcmy/FFmpeg-Builds/releases?per_page=50'",
+                  "$release=$releases | Where-Object { $_.tag_name -match '^ffmpeg-[0-9]{8}\\.[0-9]{6}-win64-nonfree-marcshared$' } | Select-Object -First 1",
+                  "if ($null -eq $release) { 'ffmpeg-00000000.000000-win64-nonfree-marcshared' } else { $release.tag_name }",
+              ],
+              'regex': r'^ffmpeg-([0-9]{8}\.[0-9]{6})-win64-nonfree-marcshared$',
+              'replace': '$1',
+          }
+          data['autoupdate'] = {
+              'architecture': {
+                  '64bit': {
+                      'url': 'https://github.com/marcmy/FFmpeg-Builds/releases/download/ffmpeg-$version-win64-nonfree-marcshared/ffmpeg-$version-win64-nonfree-marcshared.zip'
+                  }
+              }
+          }
 
-path.write_text(json.dumps(data, indent=4) + '\n')
-PY
+          path.write_text(json.dumps(data, indent=4) + '\n')
+          PY
 
           git config user.name "github-actions[bot]"
           git config user.email "41898282+github-actions[bot]@users.noreply.github.com"

@@ -47,8 +47,8 @@ ffbuild_dockerbuild() {
     sed -i 's|/\* #undef HAVE_VSNPRINTF_S \*/|#define HAVE_VSNPRINTF_S 1|' config.h
     sed -i 's|/\* #undef HAVE_SPRINTF_S \*/|#define HAVE_SPRINTF_S 1|' config.h
 
-    make -j$(nproc)
-    make install DESTDIR="$FFBUILD_DESTDIR"
+    make -C caca -j$(nproc) libcaca.la
+    make -C caca install DESTDIR="$FFBUILD_DESTDIR"
 
     if [[ -f "$FFBUILD_DESTDIR$FFBUILD_PREFIX/lib/pkgconfig/caca.pc" ]]; then
         sed -i 's/^Libs.private:.*/Libs.private: -lz/' "$FFBUILD_DESTDIR$FFBUILD_PREFIX/lib/pkgconfig/caca.pc"

@@ -1,68 +1,123 @@
-# FFmpeg Static Auto-Builds
+# Marcshared FFmpeg Builds
 
-Static Windows (x86_64) and Linux (x86_64) Builds of ffmpeg master and latest release branch.
+This is my opinionated FFmpeg build fork: a Windows x64 shared FFmpeg package meant to be the practical "just give me the all-in-one build" option.
 
-Windows builds are targetting Windows 7 and newer, provided UCRT is installed.
-The minimum supported version is Windows 10 22H2, no guarantees on anything older.
+The goal is simple: keep an hourly-updated FFmpeg master build around with as many useful codecs, filters, demuxers, muxers, hardware paths, and helper libraries enabled as is reasonably maintainable. Give or take the occasional upstream breakage, weird dependency, or library that needs extra care.
 
-Linux builds are targetting RHEL/CentOS 8 (glibc-2.28 + linux-4.18) and anything more recent.
+This repository is based on BtbN FFmpeg-Builds, but the `marcshared` variant is tuned for my own Windows use case rather than small download size or a minimal dependency set.
 
-## Auto-Builds
+## Main Build
 
-Builds run daily at 12:00 UTC (or GitHubs idea of that time) and are automatically released on success.
+The main custom build is:
 
-**Auto-Builds run ONLY for win(arm)64 and linux(arm)64. There are no win32/x86 auto-builds, though you can produce win32 builds yourself following the instructions below.**
+- Target: `win64`
+- Variant: `nonfree-marcshared`
+- Platform: Windows x86_64
+- FFmpeg source: upstream FFmpeg `master`
+- Linking style: shared FFmpeg libraries
 
-### Release Retention Policy
+In plain English: this is meant to be the maximum-useful Windows FFmpeg build I actually want to run locally.
 
-- The last build of each month is kept for two years.
-- The last 14 daily builds are kept.
-- The special "latest" build floats and provides consistent URLs always pointing to the latest build.
+## What It Tries To Include
 
-## Package List
+The `nonfree-marcshared` variant starts from the normal shared Windows dependency set, then layers on additional libraries that are useful but not always present in generic builds.
 
-For a list of included dependencies check the scripts.d directory.
-Every file corresponds to its respective package.
+Examples include:
 
-## How to make a build
+- Common codec, filter, subtitle, image, audio, hardware, and analysis libraries from the base build system
+- Additional Marcshared libraries such as `libspeex`, `libgsm`, `libcodec2`, `liblc3`, `libqrencode`, and `libquirc`
+
+The exact list lives in `scripts.d/` and may change as FFmpeg master and upstream dependencies change. The intent is broad usefulness, not a frozen minimal matrix.
+
+## Release Cadence
+
+The release workflow checks upstream FFmpeg hourly.
+
+Scheduled runs skip rebuilding when the latest release already contains the current upstream FFmpeg master SHA. Image rebuilds can also trigger a release build directly when the dependency image changes.
+
+Release versions are timestamp-based:
+
+```text
+YYYYMMDD.HHMMSS
+```
+
+Release tags and assets use this pattern:
+
+```text
+ffmpeg-YYYYMMDD.HHMMSS-win64-nonfree-marcshared
+ffmpeg-YYYYMMDD.HHMMSS-win64-nonfree-marcshared.zip
+```
+
+That keeps Scoop version comparisons sane while still recording the upstream FFmpeg SHA in the release notes.
+
+## Install With Scoop
+
+The intended install path is my Scoop bucket:
+
+```powershell
+scoop bucket add marcmy https://github.com/marcmy/scoop-bucket
+scoop install ffmpeg-nonfree-marcshared
+```
+
+Update normally with:
+
+```powershell
+scoop update
+scoop update ffmpeg-nonfree-marcshared
+```
+
+After installing, you can verify the build config with:
+
+```powershell
+ffmpeg -hide_banner -buildconf
+```
+
+## Manual Build
 
 ### Prerequisites
 
-* bash
-* docker
+- Bash
+- Docker
 
-### Build Image
+### Build the Marcshared Image
 
-* `./makeimage.sh target variant [addin [addin] [addin] ...]`
+```bash
+./makeimage.sh win64 nonfree-marcshared
+```
 
-### Build FFmpeg
+### Build FFmpeg From the Image
 
-* `./build.sh target variant [addin [addin] [addin] ...]`
+```bash
+./build.sh win64 nonfree-marcshared
+```
 
-On success, the resulting zip file will be in the `artifacts` subdir.
+On success, the resulting zip file will be in the `artifacts` directory.
 
-### Targets, Variants and Addins
+## Targets, Variants, and Addins
 
-Available targets:
-* `win64` (x86_64 Windows)
-* `win32` (x86 Windows)
-* `linux64` (x86_64 Linux, glibc>=2.28, linux>=4.18)
-* `linuxarm64` (arm64 (aarch64) Linux, glibc>=2.28, linux>=4.18)
+The upstream build system still supports the broader target/variant matrix, but this fork's custom automation is focused on `win64 nonfree-marcshared`.
 
-The linuxarm64 target will not build some dependencies due to lack of arm64 (aarch64) architecture support or cross-compiling restrictions.
+Common targets include:
 
-* `davs2` and `xavs2`: aarch64 support is broken.
-* `libmfx` and `libva`: Library for Intel QSV, so there is no aarch64 support.
+- `win64` - x86_64 Windows
+- `win32` - x86 Windows
+- `linux64` - x86_64 Linux, glibc >= 2.28, linux >= 4.18
+- `linuxarm64` - arm64/aarch64 Linux, glibc >= 2.28, linux >= 4.18
 
-Available variants:
-* `gpl` Includes all dependencies, even those that require full GPL instead of just LGPL.
-* `lgpl` Lacking libraries that are GPL-only. Most prominently libx264 and libx265.
-* `nonfree` Includes fdk-aac in addition to all the dependencies of the gpl variant.
-* `gpl-shared` Same as gpl, but comes with the libav* family of shared libs instead of pure static executables.
-* `lgpl-shared` Same again, but with the lgpl set of dependencies.
-* `nonfree-shared` Same again, but with the nonfree set of dependencies.
+Common variants include:
 
-All of those can be optionally combined with any combination of addins:
-* `4.4`/`5.0`/`5.1`/`6.0`/`6.1`/`7.0`/`7.1` to build from the respective release branch instead of master.
-* `debug` to not strip debug symbols from the binaries. This increases the output size by about 250MB.
-* `lto` build all dependencies and ffmpeg with -flto=auto (HIGHLY EXPERIMENTAL, broken for Windows, sometimes works for Linux)
+- `gpl`
+- `lgpl`
+- `nonfree`
+- `gpl-shared`
+- `lgpl-shared`
+- `nonfree-shared`
+- `nonfree-marcshared` - my custom all-in-one shared Windows variant
+
+Optional addins from the base project may still be used where supported, such as release-branch addins or debug builds.
+
+## Notes
+
+This is not an official FFmpeg build, and it is not trying to be the smallest package. It is a personal all-in-one build aimed at having almost everything I am likely to need in one constantly refreshed Windows FFmpeg install.
+
+If a dependency breaks against FFmpeg master, the fix is usually to patch the dependency script, temporarily disable the problematic library, or wait for upstream to settle down. That is the tradeoff of tracking master with a broad dependency set.

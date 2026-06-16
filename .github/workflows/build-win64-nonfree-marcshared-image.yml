@@ -13,6 +13,7 @@ env:
   VARIANT: nonfree-marcshared
   SOURCE_REPO: ghcr.io/btbn/ffmpeg-builds
   TARGET_REPO: ghcr.io/marcmy/ffmpeg-builds
+  FORCE_JAVASCRIPT_ACTIONS_TO_NODE24: true
 
 jobs:
   build-image:
@@ -31,13 +32,13 @@ jobs:
         uses: actions/checkout@v6
 
       - name: Restore FFmpeg source download cache
-        uses: actions/cache@v4
+        id: ffmpeg-download-cache
+        uses: actions/cache/restore@v4
         with:
           path: .cache/downloads
           key: ffmpeg-download-cache-${{ runner.os }}-${{ env.TARGET }}-${{ env.VARIANT }}-${{ hashFiles('download.sh', 'util/dl_functions.sh', 'variants/**', 'scripts.d/**', 'addins/**') }}
           restore-keys: |
             ffmpeg-download-cache-${{ runner.os }}-${{ env.TARGET }}-${{ env.VARIANT }}-
-          save-always: true
 
       - name: Set up Docker Buildx
         uses: docker/setup-buildx-action@v4
@@ -69,6 +70,13 @@ jobs:
           FFBUILD_DOCKER_CACHE_FROM="type=registry,ref=${TARGET_REPO}/win64-nonfree-marcshared:buildcache" \
           FFBUILD_DOCKER_CACHE_TO="type=registry,ref=${TARGET_REPO}/win64-nonfree-marcshared:buildcache,mode=max" \
           QUICKBUILD=1 NOCLEAN=1 ./makeimage.sh "$TARGET" "$VARIANT"
+
+      - name: Save FFmpeg source download cache
+        if: ${{ always() && steps.ffmpeg-download-cache.outputs.cache-hit != 'true' }}
+        uses: actions/cache/save@v4
+        with:
+          path: .cache/downloads
+          key: ffmpeg-download-cache-${{ runner.os }}-${{ env.TARGET }}-${{ env.VARIANT }}-${{ hashFiles('download.sh', 'util/dl_functions.sh', 'variants/**', 'scripts.d/**', 'addins/**') }}
 
       - name: Push win64 nonfree marcshared image
         run: |

@@ -12,16 +12,19 @@ permissions:
   contents: write
   packages: read
 
-concurrency:
-  group: marcshared-ffmpeg-release
-  cancel-in-progress: false
-
 env:
   UPSTREAM_REPO: https://github.com/FFmpeg/FFmpeg.git
   TARGET: win64
   VARIANT: nonfree-marcshared
   FFMPEG_REPO_OVERRIDE: https://github.com/FFmpeg/FFmpeg.git
   GIT_BRANCH_OVERRIDE: master
+  FORCE_JAVASCRIPT_ACTIONS_TO_NODE24: true
+  FFBUILD_CCACHE_DIR: ${{ github.workspace }}/.cache/ccache
+  FFBUILD_CCACHE_MAX_SIZE: 5G
+
+concurrency:
+  group: marcshared-ffmpeg-release
+  cancel-in-progress: false
 
 jobs:
   build:
@@ -38,6 +41,15 @@ jobs:
 
       - name: Checkout
         uses: actions/checkout@v6
+
+      - name: Restore FFmpeg ccache
+        id: ffmpeg-ccache
+        uses: actions/cache/restore@v4
+        with:
+          path: .cache/ccache
+          key: ffmpeg-ccache-${{ runner.os }}-${{ env.TARGET }}-${{ env.VARIANT }}-${{ github.run_id }}
+          restore-keys: |
+            ffmpeg-ccache-${{ runner.os }}-${{ env.TARGET }}-${{ env.VARIANT }}-
 
       - name: Login to GHCR
         uses: docker/login-action@v4
@@ -150,3 +162,10 @@ jobs:
             git commit -m "Update ffmpeg-nonfree-marcshared to ${package_version}"
             git -c "http.https://github.com/.extraheader=AUTHORIZATION: bearer ${SCOOP_BUCKET_TOKEN}" push origin HEAD:master
           fi
+
+      - name: Save FFmpeg ccache
+        if: ${{ always() }}
+        uses: actions/cache/save@v4
+        with:
+          path: .cache/ccache
+          key: ${{ steps.ffmpeg-ccache.outputs.cache-primary-key }}

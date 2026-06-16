@@ -9,12 +9,16 @@ ffbuild_enabled() {
 }
 
 ffbuild_dockerbuild() {
+    local make_args=(
+        CC="$FFBUILD_TOOLCHAIN-gcc"
+        AR="$FFBUILD_TOOLCHAIN-ar"
+        RANLIB="$FFBUILD_TOOLCHAIN-ranlib"
+    )
+
     ./configure --prefix="$FFBUILD_PREFIX" --host="$FFBUILD_TOOLCHAIN" --disable-shared --with-pic
 
-    make -j$(nproc) \
-        CC="$FFBUILD_TOOLCHAIN-gcc" \
-        AR="$FFBUILD_TOOLCHAIN-ar" \
-        RANLIB="$FFBUILD_TOOLCHAIN-ranlib"
+    make -C src -j$(nproc) "${make_args[@]}"
+    make -C lang -j$(nproc) "${make_args[@]}"
 
     mkdir -p "$FFBUILD_DESTDIR$FFBUILD_PREFIX/lib"
     mkdir -p "$FFBUILD_DESTDIR$FFBUILD_PREFIX/include/flite"

@@ -25,3 +25,10 @@ ffbuild_depends() {
 ffbuild_enabled() {
     return 0
 }
+
+# This is a dependency-graph aggregator only. There is no source repo to
+# download/build, so keep download.sh from invoking the default git downloader
+# with empty SCRIPT_REPO/SCRIPT_COMMIT values.
+ffbuild_dockerdl() {
+    return 0
+}

@@ -40,12 +40,16 @@ Description: libmodplug
 Version: 0.8.9.1
 Libs: -L\${libdir} -lmodplug
 Libs.private: -lstdc++
-Cflags: -I\${includedir}
+Cflags: -DMODPLUG_STATIC -I\${includedir}
 EOF
 }
 
 ffbuild_configure() {
     echo --enable-libmodplug
+}
+
+ffbuild_cflags() {
+    echo -DMODPLUG_STATIC
 }
 
 ffbuild_libs() {

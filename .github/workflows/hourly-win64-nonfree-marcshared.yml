@@ -160,7 +160,8 @@ jobs:
             echo "Scoop manifest already up to date."
           else
             git commit -m "Update ffmpeg-nonfree-marcshared to ${package_version}"
-            git -c "http.https://github.com/.extraheader=AUTHORIZATION: bearer ${SCOOP_BUCKET_TOKEN}" push origin HEAD:master
+            git remote set-url origin "https://x-access-token:${SCOOP_BUCKET_TOKEN}@github.com/marcmy/scoop-bucket.git"
+            git push origin HEAD:master
           fi
 
       - name: Save FFmpeg ccache

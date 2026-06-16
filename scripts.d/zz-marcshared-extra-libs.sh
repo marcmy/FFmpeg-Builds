@@ -20,6 +20,13 @@ ffbuild_depends() {
         echo lc3
         echo qrencode
         echo quirc
+        echo ladspa
+        echo lcms2
+        echo bs2b
+        echo ilbc
+        echo modplug
+        echo shine
+        echo vo-amrwbenc
     fi
 }
 

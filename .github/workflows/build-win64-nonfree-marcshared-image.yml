@@ -4,6 +4,7 @@ on:
   workflow_dispatch:
 
 permissions:
+  actions: write
   contents: read
   packages: write
 
@@ -16,7 +17,6 @@ env:
 jobs:
   build-image:
     runs-on: ubuntu-latest
-    timeout-minutes: 150
 
     steps:
       - name: Free disk space
@@ -70,3 +70,11 @@ jobs:
       - name: Push win64 nonfree marcshared image
         run: |
           docker push "$TARGET_REPO/win64-nonfree-marcshared:latest"
+
+      - name: Trigger hourly FFmpeg build
+        env:
+          GH_TOKEN: ${{ github.token }}
+        run: |
+          gh workflow run hourly-win64-nonfree-marcshared.yml \
+            --repo "$GITHUB_REPOSITORY" \
+            --ref "$GITHUB_REF_NAME"

@@ -13,6 +13,7 @@ ffbuild_depends() {
     echo "$previous_root"
 
     if [[ $VARIANT == *marcshared* ]]; then
+        echo ccache
         echo speex
         echo gsm
         echo codec2

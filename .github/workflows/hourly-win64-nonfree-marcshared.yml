@@ -1,6 +1,16 @@
 name: Hourly FFmpeg win64 Nonfree Marcshared
 
 on:
+  push:
+    branches:
+      - master
+    paths:
+      - '.github/workflows/hourly-win64-nonfree-marcshared.yml'
+      - 'variants/win64-nonfree-marcshared.sh'
+      - 'scripts.d/**'
+  repository_dispatch:
+    types:
+      - marcshared-image-updated
   schedule:
     - cron: "23 * * * *"
   workflow_dispatch:
@@ -63,7 +73,7 @@ jobs:
         id: check
         env:
           GH_TOKEN: ${{ github.token }}
-          FORCE_BUILD: ${{ github.event_name == 'workflow_dispatch' && inputs.force }}
+          FORCE_BUILD: ${{ github.event_name == 'push' || github.event_name == 'repository_dispatch' || (github.event_name == 'workflow_dispatch' && inputs.force) }}
           FFMPEG_SHA: ${{ steps.upstream.outputs.sha }}
         run: |
           if [[ "$FORCE_BUILD" == "true" ]]; then

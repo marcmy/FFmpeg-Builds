@@ -27,6 +27,9 @@ ffbuild_depends() {
         echo modplug
         echo shine
         echo vo-amrwbenc
+        echo mysofa
+        echo caca
+        echo flite
     fi
 }
 

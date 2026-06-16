@@ -8,25 +8,19 @@ ffbuild_enabled() {
     return 0
 }
 
+ffbuild_dockerdl() {
+    echo "git clone --depth=1 --branch=\"$SCRIPT_COMMIT\" --recurse-submodules --shallow-submodules \"$SCRIPT_REPO\" ."
+}
+
 ffbuild_dockerbuild() {
-    if [[ -x ./bootstrap.sh ]]; then
-        ./bootstrap.sh
-    elif [[ -x ./autogen.sh ]]; then
-        ./autogen.sh
-    else
-        autoreconf -fiv
-    fi
+    mkdir build && cd build
 
-    local myconf=(
-        --prefix="$FFBUILD_PREFIX"
-        --disable-shared
-        --enable-static
-        --host="$FFBUILD_TOOLCHAIN"
-    )
-
-    ./configure "${myconf[@]}"
-    make -j$(nproc)
-    make install DESTDIR="$FFBUILD_DESTDIR"
+    cmake -G Ninja -DCMAKE_TOOLCHAIN_FILE="$FFBUILD_CMAKE_TOOLCHAIN" -DCMAKE_BUILD_TYPE=Release -DCMAKE_INSTALL_PREFIX="$FFBUILD_PREFIX" \
+        -DBUILD_SHARED_LIBS=OFF \
+        -DCMAKE_POLICY_VERSION_MINIMUM=3.5 \
+        ..
+    ninja -j$(nproc)
+    DESTDIR="$FFBUILD_DESTDIR" ninja install
 }
 
 ffbuild_configure() {

@@ -2,6 +2,21 @@ name: Build win64 nonfree marcshared FFmpeg image
 
 on:
   workflow_dispatch:
+  push:
+    branches:
+      - master
+    paths:
+      - .github/buildkit.toml
+      - .github/workflows/build-win64-nonfree-marcshared-image.yml
+      - addins/**
+      - images/**
+      - patches/**
+      - scripts.d/**
+      - util/**
+      - variants/**
+      - download.sh
+      - generate.sh
+      - makeimage.sh
 
 permissions:
   actions: write
@@ -14,6 +29,10 @@ env:
   SOURCE_REPO: ghcr.io/btbn/ffmpeg-builds
   TARGET_REPO: ghcr.io/marcmy/ffmpeg-builds
   FORCE_JAVASCRIPT_ACTIONS_TO_NODE24: true
+
+concurrency:
+  group: marcshared-image-${{ github.ref }}
+  cancel-in-progress: true
 
 jobs:
   build-image:

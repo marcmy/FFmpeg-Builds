@@ -43,10 +43,8 @@ ffbuild_dockerbuild() {
 
     ./configure "${myconf[@]}"
 
-    # Current MinGW headers provide vsnprintf_s, but libcaca's configure probe
-    # can still report it missing. If left undefined, libcaca declares/defines
-    # a weak fallback that collides with MinGW's inline implementation.
     sed -i 's|/\* #undef HAVE_VSNPRINTF_S \*/|#define HAVE_VSNPRINTF_S 1|' config.h
+    sed -i 's|/\* #undef HAVE_SPRINTF_S \*/|#define HAVE_SPRINTF_S 1|' config.h
 
     make -j$(nproc)
     make install DESTDIR="$FFBUILD_DESTDIR"

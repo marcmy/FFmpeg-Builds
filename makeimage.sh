@@ -51,9 +51,21 @@ fi
 ./download.sh
 ./generate.sh "$TARGET" "$VARIANT" "${ADDINS[@]}"
 
+FINAL_CACHE_ARGS=(
+    --cache-from=type=local,src=.cache/"${IMAGE/:/_}"
+    --cache-to=type=local,mode=max,dest=.cache/"${IMAGE/:/_}"
+)
+
+if [[ -n "${FFBUILD_DOCKER_CACHE_FROM:-}" ]]; then
+    FINAL_CACHE_ARGS+=(--cache-from="${FFBUILD_DOCKER_CACHE_FROM}")
+fi
+
+if [[ -n "${FFBUILD_DOCKER_CACHE_TO:-}" ]]; then
+    FINAL_CACHE_ARGS+=(--cache-to="${FFBUILD_DOCKER_CACHE_TO}")
+fi
+
 docker buildx --builder ffbuilder build \
-    --cache-from=type=local,src=.cache/"${IMAGE/:/_}" \
-    --cache-to=type=local,mode=max,dest=.cache/"${IMAGE/:/_}" \
+    "${FINAL_CACHE_ARGS[@]}" \
     --build-context "${TARGET_IMAGE}=${CONTEXT_SRC}" \
     --load --tag "$IMAGE" .
 

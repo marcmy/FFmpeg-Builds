@@ -1,7 +1,7 @@
 #!/bin/bash
 
 SCRIPT_REPO="https://github.com/toots/shine.git"
-SCRIPT_COMMIT="master"
+SCRIPT_COMMIT="main"
 
 ffbuild_enabled() {
     [[ $VARIANT == *marcshared* ]] || return -1

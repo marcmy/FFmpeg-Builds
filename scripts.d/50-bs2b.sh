@@ -18,7 +18,9 @@ ffbuild_dockerbuild() {
     "$ranlib" libbs2b.a
 
     install -Dm644 libbs2b.a "$FFBUILD_DESTDIR$FFBUILD_PREFIX/lib/libbs2b.a"
-    install -Dm644 src/bs2b.h "$FFBUILD_DESTDIR$FFBUILD_PREFIX/include/bs2b.h"
+    for header in src/*.h; do
+        install -Dm644 "$header" "$FFBUILD_DESTDIR$FFBUILD_PREFIX/include/$(basename "$header")"
+    done
 
     mkdir -p "$FFBUILD_DESTDIR$FFBUILD_PREFIX/lib/pkgconfig"
     cat > "$FFBUILD_DESTDIR$FFBUILD_PREFIX/lib/pkgconfig/libbs2b.pc" <<EOF
@@ -28,7 +30,7 @@ libdir=\${prefix}/lib
 includedir=\${prefix}/include
 
 Name: libbs2b
-Description: Bauer stereophonic-to-binaural DSP library
+Description: libbs2b
 Version: 3.1.0
 Libs: -L\${libdir} -lbs2b
 Libs.private: -lm

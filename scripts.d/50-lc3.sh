@@ -1,7 +1,7 @@
 #!/bin/bash
 
 SCRIPT_REPO="https://github.com/google/liblc3.git"
-SCRIPT_COMMIT="7210a307fe39a1e003d575b42412bb5240913f8d"
+SCRIPT_COMMIT="main"
 
 ffbuild_enabled() {
     [[ $VARIANT == *marcshared* ]] || return -1
@@ -12,6 +12,20 @@ ffbuild_dockerbuild() {
     local cc="$FFBUILD_TOOLCHAIN-gcc"
     local ar="$FFBUILD_TOOLCHAIN-ar"
     local ranlib="$FFBUILD_TOOLCHAIN-ranlib"
+    local cflags=(
+        -O3
+        -std=c11
+        -Wall
+        -Wextra
+        -Wdouble-promotion
+        -Wvla
+        -pedantic
+        -ffast-math
+        -fPIC
+        -DLC3_PLUS=1
+        -DLC3_PLUS_HR=1
+        -Iinclude
+    )
     local srcs=(
         src/attdet.c
         src/bits.c
@@ -31,7 +45,7 @@ ffbuild_dockerbuild() {
     mkdir -p build
     for src in "${srcs[@]}"; do
         obj="build/$(basename "$src" .c).o"
-        "$cc" -O3 -std=c11 -Wall -Wextra -ffast-math -fPIC -Iinclude -c "$src" -o "$obj"
+        "$cc" "${cflags[@]}" -c "$src" -o "$obj"
         objs+=("$obj")
     done
 
@@ -40,6 +54,7 @@ ffbuild_dockerbuild() {
 
     install -Dm644 liblc3.a "$FFBUILD_DESTDIR$FFBUILD_PREFIX/lib/liblc3.a"
     install -Dm644 include/lc3.h "$FFBUILD_DESTDIR$FFBUILD_PREFIX/include/lc3.h"
+    install -Dm644 include/lc3_private.h "$FFBUILD_DESTDIR$FFBUILD_PREFIX/include/lc3_private.h"
 
     mkdir -p "$FFBUILD_DESTDIR$FFBUILD_PREFIX/lib/pkgconfig"
     cat > "$FFBUILD_DESTDIR$FFBUILD_PREFIX/lib/pkgconfig/lc3.pc" <<EOF

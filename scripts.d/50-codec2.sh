@@ -34,11 +34,24 @@ PY
     cmake -DCMAKE_TOOLCHAIN_FILE="$FFBUILD_CMAKE_TOOLCHAIN" -DCMAKE_BUILD_TYPE=Release -DCMAKE_INSTALL_PREFIX="$FFBUILD_PREFIX" \
         -DBUILD_SHARED_LIBS=OFF -DUNITTEST=OFF -DLPCNET=OFF ..
     cmake --build . --target codec2 --parallel $(nproc)
-    DESTDIR="$FFBUILD_DESTDIR" cmake --install .
+
+    # Avoid codec2's full CMake install on MinGW: it runs the Windows
+    # GetDependencies installer script, which expects CMake's removed
+    # GetPrerequisites module. FFmpeg only needs the static library,
+    # public headers, and pkg-config metadata.
+    install -Dm644 src/libcodec2.a "$FFBUILD_DESTDIR$FFBUILD_PREFIX/lib/libcodec2.a"
+    mkdir -p "$FFBUILD_DESTDIR$FFBUILD_PREFIX/include/codec2"
+    cp ../src/*.h "$FFBUILD_DESTDIR$FFBUILD_PREFIX/include/codec2/"
+    cp codec2/version.h "$FFBUILD_DESTDIR$FFBUILD_PREFIX/include/codec2/version.h"
+    install -Dm644 codec2.pc "$FFBUILD_DESTDIR$FFBUILD_PREFIX/lib/pkgconfig/codec2.pc"
 }
 
 ffbuild_configure() {
     echo --enable-libcodec2
+}
+
+ffbuild_libs() {
+    echo -lcodec2 -lm
 }
 
 ffbuild_unconfigure() {

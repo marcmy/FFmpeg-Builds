@@ -1,123 +1,30 @@
-name: Hourly FFmpeg win64 Nonfree Marcshared
+name: Marcshared FFmpeg Release
 
 on:
-  push:
-    branches:
-      - master
-    paths:
-      - '.github/workflows/hourly-win64-nonfree-marcshared.yml'
-      - 'variants/win64-nonfree-marcshared.sh'
-      - 'scripts.d/**'
   repository_dispatch:
     types:
       - marcshared-image-updated
   schedule:
     - cron: "23 * * * *"
-  workflow_dispatch:
-    inputs:
-      force:
-        description: "Build even when upstream FFmpeg SHA already has a release"
-        required: false
-        type: boolean
-        default: false
 
 permissions:
   contents: write
   packages: read
 
 concurrency:
-  group: hourly-ffmpeg-win64-nonfree-marcshared
+  group: marcshared-ffmpeg-release
   cancel-in-progress: false
 
 env:
   UPSTREAM_REPO: https://github.com/FFmpeg/FFmpeg.git
   TARGET: win64
   VARIANT: nonfree-marcshared
+  FFMPEG_REPO_OVERRIDE: https://github.com/FFmpeg/FFmpeg.git
+  GIT_BRANCH_OVERRIDE: master
 
 jobs:
-  check:
-    runs-on: ubuntu-latest
-
-    outputs:
-      changed: ${{ steps.check.outputs.changed }}
-      sha: ${{ steps.upstream.outputs.sha }}
-      short: ${{ steps.upstream.outputs.short }}
-      package_version: ${{ steps.version.outputs.package_version }}
-      release_tag: ${{ steps.version.outputs.release_tag }}
-
-    steps:
-      - name: Get upstream FFmpeg master SHA
-        id: upstream
-        run: |
-          sha="$(git ls-remote "$UPSTREAM_REPO" refs/heads/master | awk '{print $1}')"
-          short="${sha:0:12}"
-
-          echo "sha=$sha" >> "$GITHUB_OUTPUT"
-          echo "short=$short" >> "$GITHUB_OUTPUT"
-
-          echo "Upstream FFmpeg master: $sha"
-
-      - name: Generate monotonic package version
-        id: version
-        run: |
-          package_version="$(date -u +'%Y%m%d.%H%M%S')"
-          release_tag="ffmpeg-${package_version}-win64-nonfree-marcshared"
-
-          echo "package_version=$package_version" >> "$GITHUB_OUTPUT"
-          echo "release_tag=$release_tag" >> "$GITHUB_OUTPUT"
-
-          echo "Package version: $package_version"
-          echo "Release tag: $release_tag"
-
-      - name: Check whether this upstream SHA already has a release
-        id: check
-        env:
-          GH_TOKEN: ${{ github.token }}
-          EVENT_NAME: ${{ github.event_name }}
-          FFMPEG_SHA: ${{ steps.upstream.outputs.sha }}
-        run: |
-          force_build=false
-
-          case "$EVENT_NAME" in
-            push|repository_dispatch)
-              force_build=true
-              ;;
-            workflow_dispatch)
-              force_build="$(jq -r '.inputs.force // "false"' "$GITHUB_EVENT_PATH")"
-              ;;
-          esac
-
-          if [[ "$force_build" == "true" ]]; then
-            echo "Forced build requested by $EVENT_NAME"
-            echo "changed=true" >> "$GITHUB_OUTPUT"
-            exit 0
-          fi
-
-          latest_body="$(gh release view --repo "$GITHUB_REPOSITORY" --json body -q .body 2>/dev/null || true)"
-
-          if grep -q "$FFMPEG_SHA" <<< "$latest_body"; then
-            echo "Latest release already contains upstream SHA $FFMPEG_SHA"
-            echo "changed=false" >> "$GITHUB_OUTPUT"
-          else
-            echo "New upstream SHA"
-            echo "changed=true" >> "$GITHUB_OUTPUT"
-          fi
-
   build:
-    needs: check
-    if: needs.check.outputs.changed == 'true'
-
     runs-on: ubuntu-latest
-
-    env:
-      FFMPEG_SHA: ${{ needs.check.outputs.sha }}
-      FFMPEG_SHORT: ${{ needs.check.outputs.short }}
-      PACKAGE_VERSION: ${{ needs.check.outputs.package_version }}
-      RELEASE_TAG: ${{ needs.check.outputs.release_tag }}
-      SCOOP_BUCKET_TOKEN: ${{ secrets.SCOOP_BUCKET_TOKEN }}
-
-      FFMPEG_REPO_OVERRIDE: https://github.com/FFmpeg/FFmpeg.git
-      GIT_BRANCH_OVERRIDE: master
 
     steps:
       - name: Free disk space
@@ -138,44 +45,61 @@ jobs:
           username: ${{ github.actor }}
           password: ${{ github.token }}
 
-      - name: Build FFmpeg
-        run: |
-          ./build.sh "$TARGET" "$VARIANT"
-
-      - name: Prepare release artifacts
-        run: |
-          mkdir release
-          cp artifacts/*.zip "release/ffmpeg-${PACKAGE_VERSION}-win64-nonfree-marcshared.zip"
-          sha256sum release/* > release/checksums.sha256
-
-          cat > release/release-notes.md <<EOF
-          Upstream FFmpeg master SHA: ${FFMPEG_SHA}
-          Upstream FFmpeg short SHA: ${FFMPEG_SHORT}
-          Builder repository SHA: ${GITHUB_SHA}
-          EOF
-
-      - name: Publish release
+      - name: Build, release, and update scoop manifest
         env:
           GH_TOKEN: ${{ github.token }}
-        run: |
-          gh release create "$RELEASE_TAG" release/* \
-            --repo "$GITHUB_REPOSITORY" \
-            --title "FFmpeg win64 Nonfree Marcshared ${PACKAGE_VERSION}" \
-            --notes-file release/release-notes.md \
-            --latest
-
-      - name: Update scoop manifest
-        if: env.SCOOP_BUCKET_TOKEN != ''
-        env:
-          GH_TOKEN: ${{ env.SCOOP_BUCKET_TOKEN }}
+          SCOOP_BUCKET_TOKEN: ${{ secrets.SCOOP_BUCKET_TOKEN }}
         run: |
           set -euo pipefail
 
-          export ZIP_NAME="ffmpeg-${PACKAGE_VERSION}-win64-nonfree-marcshared.zip"
-          export ZIP_HASH="$(sha256sum "release/${ZIP_NAME}" | awk '{print $1}')"
-          export ZIP_URL="https://github.com/marcmy/FFmpeg-Builds/releases/download/${RELEASE_TAG}/${ZIP_NAME}"
+          ffmpeg_sha="$(git ls-remote "$UPSTREAM_REPO" refs/heads/master | awk '{print $1}')"
+          ffmpeg_short="${ffmpeg_sha:0:12}"
+          package_version="$(date -u +'%Y%m%d.%H%M%S')"
+          release_tag="ffmpeg-${package_version}-win64-nonfree-marcshared"
+          zip_name="ffmpeg-${package_version}-win64-nonfree-marcshared.zip"
 
-          git clone "https://x-access-token:${GH_TOKEN}@github.com/marcmy/scoop-bucket.git" scoop-bucket
+          echo "Upstream FFmpeg master SHA: ${ffmpeg_sha}"
+          echo "Package version: ${package_version}"
+          echo "Release tag: ${release_tag}"
+
+          if [[ "$GITHUB_EVENT_NAME" == "schedule" ]]; then
+            latest_body="$(gh release view --repo "$GITHUB_REPOSITORY" --json body -q .body 2>/dev/null || true)"
+            if grep -q "$ffmpeg_sha" <<< "$latest_body"; then
+              echo "Latest release already contains upstream SHA ${ffmpeg_sha}; skipping scheduled build."
+              exit 0
+            fi
+          fi
+
+          ./build.sh "$TARGET" "$VARIANT"
+
+          mkdir release
+          cp artifacts/*.zip "release/${zip_name}"
+          sha256sum "release/${zip_name}" > release/checksums.sha256
+
+          printf 'Upstream FFmpeg master SHA: %s\nUpstream FFmpeg short SHA: %s\nBuilder repository SHA: %s\n' \
+            "$ffmpeg_sha" "$ffmpeg_short" "$GITHUB_SHA" > release/release-notes.md
+
+          gh release create "$release_tag" \
+            "release/${zip_name}" \
+            "release/checksums.sha256" \
+            --repo "$GITHUB_REPOSITORY" \
+            --title "FFmpeg win64 Nonfree Marcshared ${package_version}" \
+            --notes-file release/release-notes.md \
+            --latest
+
+          if [[ -z "${SCOOP_BUCKET_TOKEN:-}" ]]; then
+            echo "SCOOP_BUCKET_TOKEN is not set; skipping scoop manifest update."
+            exit 0
+          fi
+
+          zip_hash="$(sha256sum "release/${zip_name}" | awk '{print $1}')"
+          zip_url="https://github.com/marcmy/FFmpeg-Builds/releases/download/${release_tag}/${zip_name}"
+
+          export PACKAGE_VERSION="$package_version"
+          export ZIP_HASH="$zip_hash"
+          export ZIP_URL="$zip_url"
+
+          git clone https://github.com/marcmy/scoop-bucket.git scoop-bucket
 
           cd scoop-bucket
           python3 - <<'PY'
@@ -220,8 +144,8 @@ PY
           git add bucket/ffmpeg-nonfree-marcshared.json
 
           if git diff --cached --quiet; then
-            echo "Scoop manifest already up to date"
+            echo "Scoop manifest already up to date."
           else
-            git commit -m "Update ffmpeg-nonfree-marcshared to ${PACKAGE_VERSION}"
-            git push
+            git commit -m "Update ffmpeg-nonfree-marcshared to ${package_version}"
+            git -c "http.https://github.com/.extraheader=AUTHORIZATION: bearer ${SCOOP_BUCKET_TOKEN}" push origin HEAD:master
           fi

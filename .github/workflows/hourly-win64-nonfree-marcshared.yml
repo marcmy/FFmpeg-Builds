@@ -146,9 +146,9 @@ Builder repository SHA: ${GITHUB_SHA}" \
         run: |
           set -euo pipefail
 
-          zip_name="ffmpeg-${PACKAGE_VERSION}-win64-nonfree-marcshared.zip"
-          zip_hash="$(sha256sum "release/${zip_name}" | awk '{print $1}')"
-          zip_url="https://github.com/marcmy/FFmpeg-Builds/releases/download/${RELEASE_TAG}/${zip_name}"
+          export ZIP_NAME="ffmpeg-${PACKAGE_VERSION}-win64-nonfree-marcshared.zip"
+          export ZIP_HASH="$(sha256sum "release/${ZIP_NAME}" | awk '{print $1}')"
+          export ZIP_URL="https://github.com/marcmy/FFmpeg-Builds/releases/download/${RELEASE_TAG}/${ZIP_NAME}"
 
           git clone "https://x-access-token:${GH_TOKEN}@github.com/marcmy/scoop-bucket.git" scoop-bucket
 
@@ -162,8 +162,8 @@ path = Path('bucket/ffmpeg-nonfree-marcshared.json')
 data = json.loads(path.read_text())
 
 version = os.environ['PACKAGE_VERSION']
-zip_url = os.environ['zip_url']
-zip_hash = os.environ['zip_hash']
+zip_url = os.environ['ZIP_URL']
+zip_hash = os.environ['ZIP_HASH']
 
 data['version'] = version
 data['architecture']['64bit']['url'] = zip_url

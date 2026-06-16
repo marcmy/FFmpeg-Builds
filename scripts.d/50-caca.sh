@@ -39,6 +39,7 @@ ffbuild_dockerbuild() {
         --disable-cppunit
         --disable-zzuf
         --disable-plugins
+        CFLAGS="${CFLAGS:-} -DCACA_STATIC"
     )
 
     ./configure "${myconf[@]}"
@@ -51,11 +52,16 @@ ffbuild_dockerbuild() {
 
     if [[ -f "$FFBUILD_DESTDIR$FFBUILD_PREFIX/lib/pkgconfig/caca.pc" ]]; then
         sed -i 's/^Libs.private:.*/Libs.private: -lz/' "$FFBUILD_DESTDIR$FFBUILD_PREFIX/lib/pkgconfig/caca.pc"
+        sed -i 's/^Cflags:.*/Cflags: -DCACA_STATIC -I${includedir}/' "$FFBUILD_DESTDIR$FFBUILD_PREFIX/lib/pkgconfig/caca.pc"
     fi
 }
 
 ffbuild_configure() {
     echo --enable-libcaca
+}
+
+ffbuild_cflags() {
+    echo -DCACA_STATIC
 }
 
 ffbuild_libs() {

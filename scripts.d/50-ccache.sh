@@ -1,7 +1,7 @@
 #!/bin/bash
 
 ffbuild_enabled() {
-    [[ $VARIANT == *marcshared* ]] || return -1
+    [[ $VARIANT == *marc-shared* ]] || return -1
     return 0
 }
 
@@ -10,7 +10,7 @@ ffbuild_dockerdl() {
 }
 
 # This helper does not build a normal dependency layer. It only injects ccache
-# into the final marcshared builder image so release builds can persist compiler
+# into the final marc-shared builder image so release builds can persist compiler
 # objects outside the container.
 ffbuild_dockerstage() {
     return 0

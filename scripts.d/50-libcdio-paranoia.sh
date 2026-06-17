@@ -35,14 +35,30 @@ ffbuild_dockerbuild() {
     fi
 
     ./configure "${myconf[@]}"
-    make -j$(nproc)
-    make install DESTDIR="$FFBUILD_DESTDIR"
+
+    # Build only the libraries FFmpeg probes. The recursive default build enters
+    # src/ and builds the cd-paranoia program, whose bundled getopt conflicts
+    # with MinGW's getopt prototype.
+    make -C include -j$(nproc)
+    make -C lib -j$(nproc)
+
+    make -C include install DESTDIR="$FFBUILD_DESTDIR"
+    make -C lib install DESTDIR="$FFBUILD_DESTDIR"
+    make install-pkgconfigDATA DESTDIR="$FFBUILD_DESTDIR"
 
     if [[ -f "$FFBUILD_DESTDIR$FFBUILD_PREFIX/lib/pkgconfig/libcdio_paranoia.pc" ]]; then
         if grep -q '^Libs.private:' "$FFBUILD_DESTDIR$FFBUILD_PREFIX/lib/pkgconfig/libcdio_paranoia.pc"; then
-            sed -i 's/^Libs.private:.*/& -lcdio_cdda -lcdio -lm/' "$FFBUILD_DESTDIR$FFBUILD_PREFIX/lib/pkgconfig/libcdio_paranoia.pc"
+            sed -i 's/^Libs.private:.*/& -lcdio_cdda -lcdio -lm -lwinmm/' "$FFBUILD_DESTDIR$FFBUILD_PREFIX/lib/pkgconfig/libcdio_paranoia.pc"
         else
-            echo 'Libs.private: -lcdio_cdda -lcdio -lm' >> "$FFBUILD_DESTDIR$FFBUILD_PREFIX/lib/pkgconfig/libcdio_paranoia.pc"
+            echo 'Libs.private: -lcdio_cdda -lcdio -lm -lwinmm' >> "$FFBUILD_DESTDIR$FFBUILD_PREFIX/lib/pkgconfig/libcdio_paranoia.pc"
+        fi
+    fi
+
+    if [[ -f "$FFBUILD_DESTDIR$FFBUILD_PREFIX/lib/pkgconfig/libcdio_cdda.pc" ]]; then
+        if grep -q '^Libs.private:' "$FFBUILD_DESTDIR$FFBUILD_PREFIX/lib/pkgconfig/libcdio_cdda.pc"; then
+            sed -i 's/^Libs.private:.*/& -lcdio -lm -lwinmm/' "$FFBUILD_DESTDIR$FFBUILD_PREFIX/lib/pkgconfig/libcdio_cdda.pc"
+        else
+            echo 'Libs.private: -lcdio -lm -lwinmm' >> "$FFBUILD_DESTDIR$FFBUILD_PREFIX/lib/pkgconfig/libcdio_cdda.pc"
         fi
     fi
 }
@@ -52,7 +68,7 @@ ffbuild_configure() {
 }
 
 ffbuild_libs() {
-    echo -lcdio_paranoia -lcdio_cdda -lcdio -lm
+    echo -lcdio_paranoia -lcdio_cdda -lcdio -lm -lwinmm
 }
 
 ffbuild_unconfigure() {

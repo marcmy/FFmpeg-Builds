@@ -30,6 +30,7 @@ ffbuild_depends() {
         echo mysofa
         echo caca
         echo flite
+        echo cairo
     fi
 }
 

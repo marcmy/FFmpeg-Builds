@@ -61,7 +61,10 @@ if [[ "${FFBUILD_LOCAL_FINAL_CACHE:-1}" != 0 ]]; then
 fi
 
 if [[ -n "${FFBUILD_DOCKER_CACHE_FROM:-}" ]]; then
-    FINAL_CACHE_ARGS+=(--cache-from="${FFBUILD_DOCKER_CACHE_FROM}")
+    while IFS= read -r cache_from; do
+        [[ -n "$cache_from" ]] || continue
+        FINAL_CACHE_ARGS+=(--cache-from="$cache_from")
+    done <<< "$FFBUILD_DOCKER_CACHE_FROM"
 fi
 
 if [[ -n "${FFBUILD_DOCKER_CACHE_TO:-}" ]]; then

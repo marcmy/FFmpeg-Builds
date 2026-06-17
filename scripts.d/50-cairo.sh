@@ -56,6 +56,11 @@ ffbuild_dockerbuild() {
 
     if [[ -f "$FFBUILD_DESTDIR$FFBUILD_PREFIX/lib/pkgconfig/cairo.pc" ]]; then
         sed -i 's/^Cflags:.*/Cflags: -DCAIRO_WIN32_STATIC_BUILD -I${includedir}\/cairo/' "$FFBUILD_DESTDIR$FFBUILD_PREFIX/lib/pkgconfig/cairo.pc"
+        if grep -q '^Libs.private:' "$FFBUILD_DESTDIR$FFBUILD_PREFIX/lib/pkgconfig/cairo.pc"; then
+            sed -i 's/^Libs.private:.*/& -lole32/' "$FFBUILD_DESTDIR$FFBUILD_PREFIX/lib/pkgconfig/cairo.pc"
+        else
+            echo 'Libs.private: -lole32' >> "$FFBUILD_DESTDIR$FFBUILD_PREFIX/lib/pkgconfig/cairo.pc"
+        fi
     fi
 }
 
@@ -65,6 +70,10 @@ ffbuild_configure() {
 
 ffbuild_cflags() {
     echo -DCAIRO_WIN32_STATIC_BUILD
+}
+
+ffbuild_libs() {
+    echo -lole32
 }
 
 ffbuild_unconfigure() {

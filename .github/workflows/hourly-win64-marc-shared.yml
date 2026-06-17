@@ -51,6 +51,7 @@ jobs:
           key: ffmpeg-ccache-${{ runner.os }}-${{ env.TARGET }}-${{ env.VARIANT }}-${{ github.run_id }}
           restore-keys: |
             ffmpeg-ccache-${{ runner.os }}-${{ env.TARGET }}-${{ env.VARIANT }}-
+            ffmpeg-ccache-${{ runner.os }}-${{ env.TARGET }}-nonfree-marcshared-
 
       - name: Login to GHCR
         uses: docker/login-action@v4

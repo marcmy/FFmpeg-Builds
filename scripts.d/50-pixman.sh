@@ -4,7 +4,7 @@ SCRIPT_REPO="https://gitlab.freedesktop.org/pixman/pixman.git"
 SCRIPT_COMMIT="master"
 
 ffbuild_enabled() {
-    [[ $VARIANT == *marcshared* ]] || return -1
+    [[ $VARIANT == *marc-shared* ]] || return -1
     return 0
 }
 

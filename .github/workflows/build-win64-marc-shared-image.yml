@@ -58,6 +58,7 @@ jobs:
           key: ffmpeg-download-cache-${{ runner.os }}-${{ env.TARGET }}-${{ env.VARIANT }}-${{ hashFiles('download.sh', 'util/dl_functions.sh', 'variants/**', 'scripts.d/**', 'addins/**') }}
           restore-keys: |
             ffmpeg-download-cache-${{ runner.os }}-${{ env.TARGET }}-${{ env.VARIANT }}-
+            ffmpeg-download-cache-${{ runner.os }}-${{ env.TARGET }}-nonfree-marcshared-
 
       - name: Set up Docker Buildx
         uses: docker/setup-buildx-action@v4
@@ -87,7 +88,9 @@ jobs:
           BUILDKIT_PROGRESS: plain
         run: |
           FFBUILD_LOCAL_FINAL_CACHE=0 \
-          FFBUILD_DOCKER_CACHE_FROM="type=registry,ref=${TARGET_REPO}/win64-marc-shared:buildcache" \
+          FFBUILD_DOCKER_CACHE_FROM="$(printf '%s\n%s' \
+            "type=registry,ref=${TARGET_REPO}/win64-marc-shared:buildcache" \
+            "type=registry,ref=${TARGET_REPO}/win64-nonfree-marcshared:buildcache")" \
           FFBUILD_DOCKER_CACHE_TO="type=registry,ref=${TARGET_REPO}/win64-marc-shared:buildcache,mode=max" \
           QUICKBUILD=1 NOCLEAN=1 ./makeimage.sh "$TARGET" "$VARIANT"
 

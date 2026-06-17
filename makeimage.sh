@@ -51,10 +51,14 @@ fi
 ./download.sh
 ./generate.sh "$TARGET" "$VARIANT" "${ADDINS[@]}"
 
-FINAL_CACHE_ARGS=(
-    --cache-from=type=local,src=.cache/"${IMAGE/:/_}"
-    --cache-to=type=local,mode=max,dest=.cache/"${IMAGE/:/_}"
-)
+FINAL_CACHE_ARGS=()
+
+if [[ "${FFBUILD_LOCAL_FINAL_CACHE:-1}" != 0 ]]; then
+    FINAL_CACHE_ARGS+=(
+        --cache-from=type=local,src=.cache/"${IMAGE/:/_}"
+        --cache-to=type=local,mode=max,dest=.cache/"${IMAGE/:/_}"
+    )
+fi
 
 if [[ -n "${FFBUILD_DOCKER_CACHE_FROM:-}" ]]; then
     FINAL_CACHE_ARGS+=(--cache-from="${FFBUILD_DOCKER_CACHE_FROM}")

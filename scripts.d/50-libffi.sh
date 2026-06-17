@@ -9,6 +9,11 @@ ffbuild_enabled() {
 }
 
 ffbuild_dockerbuild() {
+    # libffi master still references LT_SYS_SYMBOL_USCORE, which newer libtool
+    # no longer provides. For the x86_64-w64-mingw32 target used here, symbols
+    # are not prefixed with underscores, so provide the result directly before
+    # regenerating configure.
+    sed -i 's/^LT_SYS_SYMBOL_USCORE$/sys_symbol_underscore=no/' configure.ac
     ./autogen.sh
 
     local myconf=(
@@ -16,6 +21,7 @@ ffbuild_dockerbuild() {
         --disable-shared
         --enable-static
         --with-pic
+        --disable-docs
     )
 
     if [[ $TARGET == win* || $TARGET == linux* ]]; then

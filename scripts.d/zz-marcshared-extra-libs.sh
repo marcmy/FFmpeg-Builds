@@ -31,6 +31,7 @@ ffbuild_depends() {
         echo caca
         echo flite
         echo cairo
+        echo lensfun
     fi
 }
 

@@ -2,6 +2,12 @@ name: Cleanup Actions Caches
 
 on:
   workflow_dispatch:
+  workflow_run:
+    workflows:
+      - Build win64 Marc Shared FFmpeg image
+      - Marc Shared FFmpeg Release
+    types:
+      - completed
   schedule:
     - cron: "41 6 * * *"
 
@@ -21,7 +27,7 @@ jobs:
       - name: Prune old FFmpeg Actions caches
         env:
           GH_TOKEN: ${{ github.token }}
-          MIN_AGE_HOURS: "12"
+          MIN_AGE_HOURS: "3"
         run: |
           set -euo pipefail
 

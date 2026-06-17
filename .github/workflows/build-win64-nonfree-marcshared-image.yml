@@ -86,6 +86,7 @@ jobs:
         env:
           BUILDKIT_PROGRESS: plain
         run: |
+          FFBUILD_LOCAL_FINAL_CACHE=0 \
           FFBUILD_DOCKER_CACHE_FROM="type=registry,ref=${TARGET_REPO}/win64-nonfree-marcshared:buildcache" \
           FFBUILD_DOCKER_CACHE_TO="type=registry,ref=${TARGET_REPO}/win64-nonfree-marcshared:buildcache,mode=max" \
           QUICKBUILD=1 NOCLEAN=1 ./makeimage.sh "$TARGET" "$VARIANT"

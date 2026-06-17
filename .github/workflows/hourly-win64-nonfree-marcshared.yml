@@ -21,6 +21,7 @@ env:
   FORCE_JAVASCRIPT_ACTIONS_TO_NODE24: true
   FFBUILD_CCACHE_DIR: ${{ github.workspace }}/.cache/ccache
   FFBUILD_CCACHE_MAX_SIZE: 5G
+  MARCSHARED_RELEASES_TO_KEEP: 5
 
 concurrency:
   group: marcshared-ffmpeg-release
@@ -84,6 +85,30 @@ jobs:
               exit 0
             fi
           fi
+
+          cleanup_old_releases() {
+            local keep="${MARCSHARED_RELEASES_TO_KEEP:-5}"
+            local index=0
+
+            echo "Keeping latest ${keep} marcshared releases; deleting older ones."
+
+            gh api --paginate "repos/${GITHUB_REPOSITORY}/releases?per_page=100" \
+              --jq '.[] | select(.tag_name | test("^ffmpeg-[0-9]{8}\\.[0-9]{6}-win64-nonfree-marcshared$")) | .tag_name' |
+            while IFS= read -r tag; do
+              index=$((index + 1))
+
+              if (( index <= keep )); then
+                echo "Keeping marcshared release ${tag}"
+                continue
+              fi
+
+              echo "Deleting old marcshared release ${tag}"
+              gh release delete "$tag" \
+                --repo "$GITHUB_REPOSITORY" \
+                --cleanup-tag \
+                --yes
+            done
+          }
 
           ./build.sh "$TARGET" "$VARIANT"
 
@@ -176,6 +201,8 @@ jobs:
             --repo "$GITHUB_REPOSITORY" \
             --notes-file release/release-notes.md \
             --latest
+
+          cleanup_old_releases
 
       - name: Save FFmpeg ccache
         if: ${{ always() }}

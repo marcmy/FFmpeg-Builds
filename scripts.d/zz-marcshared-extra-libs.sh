@@ -32,6 +32,7 @@ ffbuild_depends() {
         echo flite
         echo cairo
         echo lensfun
+        echo libcdio-paranoia
     fi
 }
 

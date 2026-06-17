@@ -39,6 +39,13 @@ ffbuild_dockerbuild() {
     fi
 
     ./configure "${myconf[@]}"
-    make -j$(nproc)
-    make install DESTDIR="$FFBUILD_DESTDIR"
+
+    # Avoid the recursive doc build. Current git snapshots may miss doc/version.texi,
+    # and FFmpeg only needs the installed libraries, headers, and pkg-config files.
+    make -C include -j$(nproc)
+    make -C lib -j$(nproc)
+
+    make -C include install DESTDIR="$FFBUILD_DESTDIR"
+    make -C lib install DESTDIR="$FFBUILD_DESTDIR"
+    make install-pkgconfigDATA DESTDIR="$FFBUILD_DESTDIR"
 }

@@ -77,8 +77,10 @@ jobs:
 
           if [[ "$GITHUB_EVENT_NAME" == "schedule" ]]; then
             latest_body="$(gh release view --repo "$GITHUB_REPOSITORY" --json body -q .body 2>/dev/null || true)"
-            if grep -q "$ffmpeg_sha" <<< "$latest_body"; then
-              echo "Latest release already contains upstream SHA ${ffmpeg_sha}; skipping scheduled build."
+            if grep -Fq "Upstream FFmpeg master SHA: ${ffmpeg_sha}" <<< "$latest_body" && \
+               grep -Fq "Builder repository SHA: ${GITHUB_SHA}" <<< "$latest_body" && \
+               grep -Fq "Scoop manifest updated: yes" <<< "$latest_body"; then
+              echo "Latest release already contains upstream SHA ${ffmpeg_sha}, builder SHA ${GITHUB_SHA}, and a completed Scoop update; skipping scheduled build."
               exit 0
             fi
           fi
@@ -89,8 +91,12 @@ jobs:
           cp artifacts/*.zip "release/${zip_name}"
           sha256sum "release/${zip_name}" > release/checksums.sha256
 
-          printf 'Upstream FFmpeg master SHA: %s\nUpstream FFmpeg short SHA: %s\nBuilder repository SHA: %s\n' \
-            "$ffmpeg_sha" "$ffmpeg_short" "$GITHUB_SHA" > release/release-notes.md
+          write_release_notes() {
+            printf 'Upstream FFmpeg master SHA: %s\nUpstream FFmpeg short SHA: %s\nBuilder repository SHA: %s\nScoop manifest updated: %s\n' \
+              "$ffmpeg_sha" "$ffmpeg_short" "$GITHUB_SHA" "$1" > release/release-notes.md
+          }
+
+          write_release_notes pending
 
           gh release create "$release_tag" \
             "release/${zip_name}" \
@@ -163,6 +169,13 @@ jobs:
             git remote set-url origin "https://x-access-token:${SCOOP_BUCKET_TOKEN}@github.com/marcmy/scoop-bucket.git"
             git push origin HEAD:master
           fi
+
+          cd ..
+          write_release_notes yes
+          gh release edit "$release_tag" \
+            --repo "$GITHUB_REPOSITORY" \
+            --notes-file release/release-notes.md \
+            --latest
 
       - name: Save FFmpeg ccache
         if: ${{ always() }}

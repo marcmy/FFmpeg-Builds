@@ -28,7 +28,7 @@ ffbuild_dockerbuild() {
     DESTDIR="$FFBUILD_DESTDIR" ninja -C ffbuild-build install
 
     if [[ -f "$FFBUILD_DESTDIR$FFBUILD_PREFIX/lib/pkgconfig/lensfun.pc" ]]; then
-        sed -i 's/^Cflags:.*/Cflags: -DCONF_LENSFUN_STATIC -I${includedir}/' "$FFBUILD_DESTDIR$FFBUILD_PREFIX/lib/pkgconfig/lensfun.pc"
+        sed -i 's/^Cflags:.*/Cflags: -DCONF_LENSFUN_STATIC -I${includedir}\/lensfun -I${includedir}/' "$FFBUILD_DESTDIR$FFBUILD_PREFIX/lib/pkgconfig/lensfun.pc"
         if grep -q '^Libs.private:' "$FFBUILD_DESTDIR$FFBUILD_PREFIX/lib/pkgconfig/lensfun.pc"; then
             sed -i 's/^Libs.private:.*/& -lstdc++ -lglib-2.0 -lintl -liconv -lpcre2-8 -lffi -lz -lws2_32 -lole32 -lwinmm -lshlwapi/' "$FFBUILD_DESTDIR$FFBUILD_PREFIX/lib/pkgconfig/lensfun.pc"
         else

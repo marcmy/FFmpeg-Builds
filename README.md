@@ -1,31 +1,32 @@
-# Marcshared FFmpeg Builds
+# Marc Shared FFmpeg Builds
 
 This is my opinionated FFmpeg build fork: a Windows x64 shared FFmpeg package meant to be the practical "just give me the all-in-one build" option.
 
 The goal is simple: keep an hourly-updated FFmpeg master build around with as many useful codecs, filters, demuxers, muxers, hardware paths, and helper libraries enabled as is reasonably maintainable. Give or take the occasional upstream breakage, weird dependency, or library that needs extra care.
 
-This repository is based on BtbN FFmpeg-Builds, but the `marcshared` variant is tuned for my own Windows use case rather than small download size or a minimal dependency set.
+This repository is based on BtbN FFmpeg-Builds, but the `marc-shared` variant is tuned for my own Windows use case rather than small download size or a minimal dependency set.
 
 ## Main Build
 
 The main custom build is:
 
 - Target: `win64`
-- Variant: `nonfree-marcshared`
+- Variant: `marc-shared`
 - Platform: Windows x86_64
 - FFmpeg source: upstream FFmpeg `master`
 - Linking style: shared FFmpeg libraries
+- Licensing: nonfree FFmpeg build, via the underlying `win64-nonfree-shared` variant
 
 In plain English: this is meant to be the maximum-useful Windows FFmpeg build I actually want to run locally.
 
 ## What It Tries To Include
 
-The `nonfree-marcshared` variant starts from the normal shared Windows dependency set, then layers on additional libraries that are useful but not always present in generic builds.
+The `marc-shared` variant starts from the normal nonfree shared Windows dependency set, then layers on additional libraries that are useful but not always present in generic builds.
 
 Examples include:
 
 - Common codec, filter, subtitle, image, audio, hardware, and analysis libraries from the base build system
-- Additional Marcshared libraries such as `libspeex`, `libgsm`, `libcodec2`, `liblc3`, `libqrencode`, and `libquirc`
+- Additional Marc Shared libraries such as `libspeex`, `libgsm`, `libcodec2`, `liblc3`, `libqrencode`, and `libquirc`
 
 The exact list lives in `scripts.d/` and may change as FFmpeg master and upstream dependencies change. The intent is broad usefulness, not a frozen minimal matrix.
 
@@ -44,8 +45,8 @@ YYYYMMDD.HHMMSS
 Release tags and assets use this pattern:
 
 ```text
-ffmpeg-YYYYMMDD.HHMMSS-win64-nonfree-marcshared
-ffmpeg-YYYYMMDD.HHMMSS-win64-nonfree-marcshared.zip
+ffmpeg-YYYYMMDD.HHMMSS-win64-marc-shared
+ffmpeg-YYYYMMDD.HHMMSS-win64-marc-shared.zip
 ```
 
 That keeps Scoop version comparisons sane while still recording the upstream FFmpeg SHA in the release notes.
@@ -56,14 +57,14 @@ The intended install path is my Scoop bucket:
 
 ```powershell
 scoop bucket add marcmy https://github.com/marcmy/scoop-bucket
-scoop install ffmpeg-nonfree-marcshared
+scoop install ffmpeg-marc-shared
 ```
 
 Update normally with:
 
 ```powershell
 scoop update
-scoop update ffmpeg-nonfree-marcshared
+scoop update ffmpeg-marc-shared
 ```
 
 After installing, you can verify the build config with:
@@ -79,23 +80,23 @@ ffmpeg -hide_banner -buildconf
 - Bash
 - Docker
 
-### Build the Marcshared Image
+### Build the Marc Shared Image
 
 ```bash
-./makeimage.sh win64 nonfree-marcshared
+./makeimage.sh win64 marc-shared
 ```
 
 ### Build FFmpeg From the Image
 
 ```bash
-./build.sh win64 nonfree-marcshared
+./build.sh win64 marc-shared
 ```
 
 On success, the resulting zip file will be in the `artifacts` directory.
 
 ## Targets, Variants, and Addins
 
-The upstream build system still supports the broader target/variant matrix, but this fork's custom automation is focused on `win64 nonfree-marcshared`.
+The upstream build system still supports the broader target/variant matrix, but this fork's custom automation is focused on `win64 marc-shared`.
 
 Common targets include:
 
@@ -112,12 +113,14 @@ Common variants include:
 - `gpl-shared`
 - `lgpl-shared`
 - `nonfree-shared`
-- `nonfree-marcshared` - my custom all-in-one shared Windows variant
+- `marc-shared` - my custom all-in-one shared Windows variant
 
 Optional addins from the base project may still be used where supported, such as release-branch addins or debug builds.
 
 ## Notes
 
 This is not an official FFmpeg build, and it is not trying to be the smallest package. It is a personal all-in-one build aimed at having almost everything I am likely to need in one constantly refreshed Windows FFmpeg install.
+
+Because the current Marc Shared build inherits from `win64-nonfree-shared`, its binaries fall under FFmpeg's nonfree/unredistributable category. If I ever split out a GPL-only variant, the intended name is `marc-gpl-shared`.
 
 If a dependency breaks against FFmpeg master, the fix is usually to patch the dependency script, temporarily disable the problematic library, or wait for upstream to settle down. That is the tradeoff of tracking master with a broad dependency set.

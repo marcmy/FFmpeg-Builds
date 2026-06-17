@@ -4,7 +4,7 @@ SCRIPT_REPO="https://github.com/dlfcn-win32/dlfcn-win32.git"
 SCRIPT_COMMIT="master"
 
 ffbuild_enabled() {
-    [[ $VARIANT == *marcshared* ]] || return -1
+    [[ $VARIANT == *marc-shared* ]] || return -1
     return 0
 }
 

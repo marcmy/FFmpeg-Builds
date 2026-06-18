@@ -204,6 +204,46 @@ jobs:
           path: .cache/ccache
           key: ${{ steps.ffmpeg-ccache.outputs.cache-primary-key }}
 
+      - name: Prune old FFmpeg Actions caches
+        if: ${{ always() }}
+        env:
+          GH_TOKEN: ${{ github.token }}
+        run: |
+          set -euo pipefail
+
+          prune_prefix() {
+            local prefix="$1"
+            local keep="$2"
+            local seen=0
+
+            echo "Pruning prefix '${prefix}', keeping ${keep}."
+
+            gh api \
+              "repos/${GITHUB_REPOSITORY}/actions/caches?per_page=100&sort=last_accessed_at&direction=desc&key=${prefix}" \
+              --jq '.actions_caches[] | [.id, .key, .last_accessed_at, .size_in_bytes] | @tsv' |
+            while IFS=$'\t' read -r cache_id cache_key last_accessed_at size_in_bytes; do
+              seen=$((seen + 1))
+
+              if (( seen <= keep )); then
+                echo "Keeping ${cache_key} (${size_in_bytes} bytes): newest ${seen}/${keep}."
+                continue
+              fi
+
+              echo "Deleting ${cache_key} (${size_in_bytes} bytes), cache id ${cache_id}; last accessed ${last_accessed_at}."
+              gh api \
+                -X DELETE \
+                "repos/${GITHUB_REPOSITORY}/actions/caches/${cache_id}" \
+                --silent
+            done
+          }
+
+          prune_prefix "ffmpeg-download-cache-${RUNNER_OS}-${TARGET}-${VARIANT}-" 1
+          prune_prefix "ffmpeg-ccache-${RUNNER_OS}-${TARGET}-${VARIANT}-" 1
+          prune_prefix "ffmpeg-cache-${RUNNER_OS}-${TARGET}-${VARIANT}-" 0
+          prune_prefix "ffmpeg-download-cache-${RUNNER_OS}-win64-nonfree-marcshared-" 0
+          prune_prefix "ffmpeg-ccache-${RUNNER_OS}-win64-nonfree-marcshared-" 0
+          prune_prefix "ffmpeg-cache-${RUNNER_OS}-win64-nonfree-marcshared-" 0
+
       - name: Fail if Marc Shared release build failed
         if: ${{ always() }}
         run: |

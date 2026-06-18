@@ -240,10 +240,8 @@ jobs:
 
           prune_prefix "ffmpeg-download-cache-${RUNNER_OS}-${TARGET}-${VARIANT}-" 1
           prune_prefix "ffmpeg-ccache-${RUNNER_OS}-${TARGET}-${VARIANT}-" 1
-          prune_prefix "ffmpeg-cache-${RUNNER_OS}-${TARGET}-${VARIANT}-" 0
           prune_prefix "ffmpeg-download-cache-${RUNNER_OS}-win64-nonfree-marcshared-" 0
           prune_prefix "ffmpeg-ccache-${RUNNER_OS}-win64-nonfree-marcshared-" 0
-          prune_prefix "ffmpeg-cache-${RUNNER_OS}-win64-nonfree-marcshared-" 0
 
       - name: Fail if Marc Shared release build failed
         if: ${{ always() }}

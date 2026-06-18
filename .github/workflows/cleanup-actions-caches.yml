@@ -2,8 +2,11 @@ name: Cleanup Actions Caches
 
 on:
   workflow_dispatch:
-  schedule:
-    - cron: "41 */3 * * *"
+  workflow_run:
+    workflows:
+      - Marc Shared FFmpeg Release
+    types:
+      - completed
 
 permissions:
   actions: write

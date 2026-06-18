@@ -21,7 +21,7 @@ jobs:
       - name: Prune old FFmpeg Actions caches
         env:
           GH_TOKEN: ${{ github.token }}
-          MIN_AGE_HOURS: "3"
+          MIN_AGE_HOURS: "0"
         run: |
           set -euo pipefail
 
@@ -63,7 +63,7 @@ jobs:
           }
 
           prune_prefix "ffmpeg-download-cache-Linux-win64-marc-shared-" 1
-          prune_prefix "ffmpeg-ccache-Linux-win64-marc-shared-" 2
+          prune_prefix "ffmpeg-ccache-Linux-win64-marc-shared-" 1
           prune_prefix "ffmpeg-cache-Linux-win64-marc-shared-" 0
           prune_prefix "ffmpeg-download-cache-Linux-win64-nonfree-marcshared-" 0
           prune_prefix "ffmpeg-ccache-Linux-win64-nonfree-marcshared-" 0

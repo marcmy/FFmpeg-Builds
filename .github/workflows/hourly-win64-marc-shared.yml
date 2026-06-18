@@ -218,14 +218,17 @@ jobs:
             cleanup_old_releases
           } 2>&1 | tee logs/build-release-win64-marc-shared.log
           status=${PIPESTATUS[0]}
-          exit "$status"
+          echo "$status" > logs/build-release-win64-marc-shared.status
+          exit 0
 
       - name: Upload Marc Shared release build log
         if: ${{ always() }}
         uses: actions/upload-artifact@v5
         with:
           name: marc-shared-release-build-log-${{ github.run_id }}-${{ github.run_attempt }}
-          path: logs/build-release-win64-marc-shared.log
+          path: |
+            logs/build-release-win64-marc-shared.log
+            logs/build-release-win64-marc-shared.status
           if-no-files-found: warn
           retention-days: 30
 
@@ -235,3 +238,20 @@ jobs:
         with:
           path: .cache/ccache
           key: ${{ steps.ffmpeg-ccache.outputs.cache-primary-key }}
+
+      - name: Fail if Marc Shared release build failed
+        if: ${{ always() }}
+        run: |
+          status=1
+          if [[ -f logs/build-release-win64-marc-shared.status ]]; then
+            status="$(cat logs/build-release-win64-marc-shared.status)"
+          else
+            echo "Build status file missing; treating release build as failed."
+          fi
+
+          if [[ "$status" != "0" ]]; then
+            echo "Marc Shared release build failed with exit status ${status}."
+            exit "$status"
+          fi
+
+          echo "Marc Shared release build succeeded."

@@ -4,7 +4,7 @@ SCRIPT_REPO="https://github.com/dlbeer/quirc.git"
 SCRIPT_COMMIT="dd7d1ab9dd732bdf66d8434821f97db467b8d620"
 
 ffbuild_enabled() {
-    [[ $VARIANT == *marcshared* ]] || return -1
+    [[ $VARIANT == *marc-shared* ]] || return -1
     return 0
 }
 

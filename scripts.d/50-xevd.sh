@@ -27,6 +27,16 @@ ffbuild_dockerbuild() {
     [[ -n "$lib" ]] || return -1
     install -Dm644 "$lib" "$FFBUILD_DESTDIR$FFBUILD_PREFIX/lib/libxevd.a"
 
+    # Upstream may still produce a MinGW runtime DLL/import pair even when the
+    # FFmpeg probe links successfully. Install the DLL into bin so shared Windows
+    # packages do not ship an ffmpeg.exe that depends on a missing libxevd.dll.
+    find ffbuild-build -type f \( -name 'libxevd.dll' -o -name 'xevd.dll' \) -print0 | while IFS= read -r -d '' dll; do
+        install -Dm755 "$dll" "$FFBUILD_DESTDIR$FFBUILD_PREFIX/bin/$(basename "$dll")"
+    done
+    find ffbuild-build -type f \( -name 'libxevd.dll.a' -o -name 'xevd.dll.a' \) -print0 | while IFS= read -r -d '' importlib; do
+        install -Dm644 "$importlib" "$FFBUILD_DESTDIR$FFBUILD_PREFIX/lib/$(basename "$importlib")"
+    done
+
     find inc -name '*.h' -type f -print0 | while IFS= read -r -d '' header; do
         install -Dm644 "$header" "$FFBUILD_DESTDIR$FFBUILD_PREFIX/include/$(basename "$header")"
     done

@@ -6,19 +6,22 @@ from pathlib import Path
 
 
 def main() -> int:
-    if len(sys.argv) != 3:
-        print("usage: update-scoop-manifest.py <manifest-path> <old-manifest-path>", file=sys.stderr)
+    if len(sys.argv) not in (2, 3):
+        print("usage: update-scoop-manifest.py <manifest-path> [old-manifest-path]", file=sys.stderr)
         return 2
 
     path = Path(sys.argv[1])
-    old_path = Path(sys.argv[2])
+    old_path = Path(sys.argv[2]) if len(sys.argv) == 3 else None
 
     if path.exists():
         data = json.loads(path.read_text())
-    elif old_path.exists():
+    elif old_path is not None and old_path.exists():
         data = json.loads(old_path.read_text())
     else:
-        print(f"neither manifest exists: {path} or {old_path}", file=sys.stderr)
+        if old_path is None:
+            print(f"manifest does not exist: {path}", file=sys.stderr)
+        else:
+            print(f"neither manifest exists: {path} or {old_path}", file=sys.stderr)
         return 1
 
     version = os.environ["PACKAGE_VERSION"]

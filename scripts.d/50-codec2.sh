@@ -4,7 +4,7 @@ SCRIPT_REPO="https://github.com/drowe67/codec2.git"
 SCRIPT_COMMIT="310777b1c6f1af0bc7c72f5b32f80f6fd9136962"
 
 ffbuild_enabled() {
-    [[ $VARIANT == *marcshared* ]] || return -1
+    [[ $VARIANT == *marc-shared* ]] || return -1
     return 0
 }
 

@@ -206,6 +206,7 @@ jobs:
 
       - name: Prune old FFmpeg Actions caches
         if: ${{ always() }}
+        continue-on-error: true
         env:
           GH_TOKEN: ${{ github.token }}
         run: |

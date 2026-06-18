@@ -87,7 +87,7 @@ copy_runtime_dlls() {
             api-ms-*.dll|ext-ms-*.dll|ucrtbase.dll)
                 continue
                 ;;
-            bcrypt.dll|cfgmgr32.dll|crypt32.dll|d3d11.dll|d3d12.dll|dcomp.dll|dwmapi.dll|dxgi.dll|dxva2.dll|dwrite.dll|gdi32.dll|imm32.dll|iphlpapi.dll|kernel32.dll|mfplat.dll|mfreadwrite.dll|mfuuid.dll|msimg32.dll|msvcrt.dll|ncrypt.dll|normaliz.dll|ntdll.dll|ole32.dll|oleaut32.dll|opengl32.dll|rpcrt4.dll|secur32.dll|setupapi.dll|shell32.dll|shlwapi.dll|strmiids.dll|user32.dll|usp10.dll|uuid.dll|version.dll|vfw32.dll|winmm.dll|ws2_32.dll)
+            advapi32.dll|avicap32.dll|avrt.dll|bcrypt.dll|cfgmgr32.dll|crypt32.dll|d2d1.dll|d3d11.dll|d3d12.dll|dcomp.dll|dwmapi.dll|dxgi.dll|dxva2.dll|dwrite.dll|gdi32.dll|imm32.dll|iphlpapi.dll|kernel32.dll|mfplat.dll|mfreadwrite.dll|mfuuid.dll|msimg32.dll|msvcrt.dll|ncrypt.dll|normaliz.dll|ntdll.dll|ole32.dll|oleaut32.dll|opengl32.dll|rpcrt4.dll|secur32.dll|setupapi.dll|shell32.dll|shlwapi.dll|strmiids.dll|user32.dll|usp10.dll|uuid.dll|version.dll|vfw32.dll|winmm.dll|ws2_32.dll)
                 continue
                 ;;
         esac

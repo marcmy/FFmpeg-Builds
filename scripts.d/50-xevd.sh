@@ -31,6 +31,21 @@ ffbuild_dockerbuild() {
         install -Dm644 "$header" "$FFBUILD_DESTDIR$FFBUILD_PREFIX/include/$(basename "$header")"
     done
 
+    local export_header
+    export_header="$(find ffbuild-build -name 'xevd_exports.h' -type f -print -quit)"
+    if [[ -n "$export_header" ]]; then
+        install -Dm644 "$export_header" "$FFBUILD_DESTDIR$FFBUILD_PREFIX/include/xevd_exports.h"
+    else
+        cat > "$FFBUILD_DESTDIR$FFBUILD_PREFIX/include/xevd_exports.h" <<'EOF'
+#ifndef XEVD_EXPORTS_H
+#define XEVD_EXPORTS_H
+#ifndef XEVD_EXPORT
+#define XEVD_EXPORT
+#endif
+#endif
+EOF
+    fi
+
     mkdir -p "$FFBUILD_DESTDIR$FFBUILD_PREFIX/lib/pkgconfig"
     cat > "$FFBUILD_DESTDIR$FFBUILD_PREFIX/lib/pkgconfig/xevd.pc" <<EOF
 prefix=$FFBUILD_PREFIX

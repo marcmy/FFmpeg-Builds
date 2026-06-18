@@ -2,14 +2,8 @@ name: Cleanup Actions Caches
 
 on:
   workflow_dispatch:
-  workflow_run:
-    workflows:
-      - Build win64 Marc Shared FFmpeg image
-      - Marc Shared FFmpeg Release
-    types:
-      - completed
   schedule:
-    - cron: "41 6 * * *"
+    - cron: "41 */6 * * *"
 
 permissions:
   actions: write

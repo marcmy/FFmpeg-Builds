@@ -65,146 +65,168 @@ jobs:
           GH_TOKEN: ${{ github.token }}
           SCOOP_BUCKET_TOKEN: ${{ secrets.SCOOP_BUCKET_TOKEN }}
         run: |
-          set -euo pipefail
+          mkdir -p logs
+          set +e
+          {
+            set -euo pipefail
 
-          ffmpeg_sha="$(git ls-remote "$UPSTREAM_REPO" refs/heads/master | awk '{print $1}')"
-          ffmpeg_short="${ffmpeg_sha:0:12}"
-          package_version="$(date -u +'%Y%m%d.%H%M%S')"
-          release_tag="ffmpeg-${package_version}-win64-marc-shared"
-          zip_name="ffmpeg-${package_version}-win64-marc-shared.zip"
+            echo "=== Marc Shared FFmpeg release build ==="
+            echo "Run ID: ${GITHUB_RUN_ID}"
+            echo "Run attempt: ${GITHUB_RUN_ATTEMPT}"
+            echo "Repository SHA: ${GITHUB_SHA}"
+            echo "UTC start: $(date -u +'%Y-%m-%dT%H:%M:%SZ')"
+            echo
 
-          echo "Upstream FFmpeg master SHA: ${ffmpeg_sha}"
-          echo "Package version: ${package_version}"
-          echo "Release tag: ${release_tag}"
+            ffmpeg_sha="$(git ls-remote "$UPSTREAM_REPO" refs/heads/master | awk '{print $1}')"
+            ffmpeg_short="${ffmpeg_sha:0:12}"
+            package_version="$(date -u +'%Y%m%d.%H%M%S')"
+            release_tag="ffmpeg-${package_version}-win64-marc-shared"
+            zip_name="ffmpeg-${package_version}-win64-marc-shared.zip"
 
-          if [[ "$GITHUB_EVENT_NAME" == "schedule" ]]; then
-            latest_body="$(gh release view --repo "$GITHUB_REPOSITORY" --json body -q .body 2>/dev/null || true)"
-            if grep -Fq "Upstream FFmpeg master SHA: ${ffmpeg_sha}" <<< "$latest_body" && \
-               grep -Fq "Builder repository SHA: ${GITHUB_SHA}" <<< "$latest_body" && \
-               grep -Fq "Scoop manifest updated: yes" <<< "$latest_body"; then
-              echo "Latest release already contains upstream SHA ${ffmpeg_sha}, builder SHA ${GITHUB_SHA}, and a completed Scoop update; skipping scheduled build."
+            echo "Upstream FFmpeg master SHA: ${ffmpeg_sha}"
+            echo "Package version: ${package_version}"
+            echo "Release tag: ${release_tag}"
+
+            if [[ "$GITHUB_EVENT_NAME" == "schedule" ]]; then
+              latest_body="$(gh release view --repo "$GITHUB_REPOSITORY" --json body -q .body 2>/dev/null || true)"
+              if grep -Fq "Upstream FFmpeg master SHA: ${ffmpeg_sha}" <<< "$latest_body" && \
+                 grep -Fq "Builder repository SHA: ${GITHUB_SHA}" <<< "$latest_body" && \
+                 grep -Fq "Scoop manifest updated: yes" <<< "$latest_body"; then
+                echo "Latest release already contains upstream SHA ${ffmpeg_sha}, builder SHA ${GITHUB_SHA}, and a completed Scoop update; skipping scheduled build."
+                exit 0
+              fi
+            fi
+
+            cleanup_old_releases() {
+              local keep="${MARC_SHARED_RELEASES_TO_KEEP:-5}"
+              local index=0
+
+              echo "Keeping latest ${keep} Marc Shared releases; deleting older ones."
+
+              gh api --paginate "repos/${GITHUB_REPOSITORY}/releases?per_page=100" \
+                --jq '.[] | select(.tag_name | test("^ffmpeg-[0-9]{8}\\.[0-9]{6}-win64-(marc-shared|nonfree-marcshared)$")) | .tag_name' |
+              while IFS= read -r tag; do
+                index=$((index + 1))
+
+                if (( index <= keep )); then
+                  echo "Keeping Marc Shared release ${tag}"
+                  continue
+                fi
+
+                echo "Deleting old Marc Shared release ${tag}"
+                gh release delete "$tag" \
+                  --repo "$GITHUB_REPOSITORY" \
+                  --cleanup-tag \
+                  --yes
+              done
+            }
+
+            ./build.sh "$TARGET" "$VARIANT"
+
+            mkdir release
+            cp artifacts/*.zip "release/${zip_name}"
+            sha256sum "release/${zip_name}" > release/checksums.sha256
+
+            write_release_notes() {
+              printf 'Upstream FFmpeg master SHA: %s\nUpstream FFmpeg short SHA: %s\nBuilder repository SHA: %s\nScoop manifest updated: %s\n' \
+                "$ffmpeg_sha" "$ffmpeg_short" "$GITHUB_SHA" "$1" > release/release-notes.md
+            }
+
+            write_release_notes pending
+
+            gh release create "$release_tag" \
+              "release/${zip_name}" \
+              "release/checksums.sha256" \
+              --repo "$GITHUB_REPOSITORY" \
+              --title "FFmpeg win64 Marc Shared ${package_version}" \
+              --notes-file release/release-notes.md \
+              --latest
+
+            if [[ -z "${SCOOP_BUCKET_TOKEN:-}" ]]; then
+              echo "SCOOP_BUCKET_TOKEN is not set; skipping scoop manifest update."
               exit 0
             fi
-          fi
 
-          cleanup_old_releases() {
-            local keep="${MARC_SHARED_RELEASES_TO_KEEP:-5}"
-            local index=0
+            zip_hash="$(sha256sum "release/${zip_name}" | awk '{print $1}')"
+            zip_url="https://github.com/marcmy/FFmpeg-Builds/releases/download/${release_tag}/${zip_name}"
 
-            echo "Keeping latest ${keep} Marc Shared releases; deleting older ones."
+            export PACKAGE_VERSION="$package_version"
+            export ZIP_HASH="$zip_hash"
+            export ZIP_URL="$zip_url"
 
-            gh api --paginate "repos/${GITHUB_REPOSITORY}/releases?per_page=100" \
-              --jq '.[] | select(.tag_name | test("^ffmpeg-[0-9]{8}\\.[0-9]{6}-win64-(marc-shared|nonfree-marcshared)$")) | .tag_name' |
-            while IFS= read -r tag; do
-              index=$((index + 1))
+            git clone https://github.com/marcmy/scoop-bucket.git scoop-bucket
 
-              if (( index <= keep )); then
-                echo "Keeping Marc Shared release ${tag}"
-                continue
-              fi
+            cd scoop-bucket
+            python3 - <<'PY'
+            import json
+            import os
+            from pathlib import Path
 
-              echo "Deleting old Marc Shared release ${tag}"
-              gh release delete "$tag" \
-                --repo "$GITHUB_REPOSITORY" \
-                --cleanup-tag \
-                --yes
-            done
-          }
+            path = Path('bucket/ffmpeg-marc-shared.json')
+            old_path = Path('bucket/ffmpeg-nonfree-marcshared.json')
+            data = json.loads(path.read_text() if path.exists() else old_path.read_text())
 
-          ./build.sh "$TARGET" "$VARIANT"
+            version = os.environ['PACKAGE_VERSION']
+            zip_url = os.environ['ZIP_URL']
+            zip_hash = os.environ['ZIP_HASH']
 
-          mkdir release
-          cp artifacts/*.zip "release/${zip_name}"
-          sha256sum "release/${zip_name}" > release/checksums.sha256
+            data['version'] = version
+            data['architecture']['64bit']['url'] = zip_url
+            data['architecture']['64bit']['hash'] = zip_hash
+            data['checkver'] = {
+                'script': [
+                    "$ErrorActionPreference='Stop'",
+                    "$headers=@{ 'User-Agent'='Scoop-Checkver'; 'Accept'='application/vnd.github+json'; 'X-GitHub-Api-Version'='2022-11-28' }",
+                    "$releases=Invoke-RestMethod -Headers $headers -Uri 'https://api.github.com/repos/marcmy/FFmpeg-Builds/releases?per_page=50'",
+                    "$release=$releases | Where-Object { $_.tag_name -match '^ffmpeg-[0-9]{8}\\.[0-9]{6}-win64-marc-shared$' } | Select-Object -First 1",
+                    "if ($null -eq $release) { 'ffmpeg-00000000.000000-win64-marc-shared' } else { $release.tag_name }",
+                ],
+                'regex': r'^ffmpeg-([0-9]{8}\.[0-9]{6})-win64-marc-shared$',
+                'replace': '$1',
+            }
+            data['autoupdate'] = {
+                'architecture': {
+                    '64bit': {
+                        'url': 'https://github.com/marcmy/FFmpeg-Builds/releases/download/ffmpeg-$version-win64-marc-shared/ffmpeg-$version-win64-marc-shared.zip'
+                    }
+                }
+            }
 
-          write_release_notes() {
-            printf 'Upstream FFmpeg master SHA: %s\nUpstream FFmpeg short SHA: %s\nBuilder repository SHA: %s\nScoop manifest updated: %s\n' \
-              "$ffmpeg_sha" "$ffmpeg_short" "$GITHUB_SHA" "$1" > release/release-notes.md
-          }
+            path.write_text(json.dumps(data, indent=4) + '\n')
+            PY
 
-          write_release_notes pending
+            git config user.name "github-actions[bot]"
+            git config user.email "41898282+github-actions[bot]@users.noreply.github.com"
+            git add bucket/ffmpeg-marc-shared.json
 
-          gh release create "$release_tag" \
-            "release/${zip_name}" \
-            "release/checksums.sha256" \
-            --repo "$GITHUB_REPOSITORY" \
-            --title "FFmpeg win64 Marc Shared ${package_version}" \
-            --notes-file release/release-notes.md \
-            --latest
+            if git diff --cached --quiet; then
+              echo "Scoop manifest already up to date."
+            else
+              git commit -m "Update ffmpeg-marc-shared to ${package_version}"
+              git remote set-url origin "https://x-access-token:${SCOOP_BUCKET_TOKEN}@github.com/marcmy/scoop-bucket.git"
+              git push origin HEAD:master
+            fi
 
-          if [[ -z "${SCOOP_BUCKET_TOKEN:-}" ]]; then
-            echo "SCOOP_BUCKET_TOKEN is not set; skipping scoop manifest update."
-            exit 0
-          fi
+            cd ..
+            write_release_notes yes
+            gh release edit "$release_tag" \
+              --repo "$GITHUB_REPOSITORY" \
+              --notes-file release/release-notes.md \
+              --latest
 
-          zip_hash="$(sha256sum "release/${zip_name}" | awk '{print $1}')"
-          zip_url="https://github.com/marcmy/FFmpeg-Builds/releases/download/${release_tag}/${zip_name}"
+            cleanup_old_releases
+          } 2>&1 | tee logs/build-release-win64-marc-shared.log
+          status=${PIPESTATUS[0]}
+          exit "$status"
 
-          export PACKAGE_VERSION="$package_version"
-          export ZIP_HASH="$zip_hash"
-          export ZIP_URL="$zip_url"
-
-          git clone https://github.com/marcmy/scoop-bucket.git scoop-bucket
-
-          cd scoop-bucket
-          python3 - <<'PY'
-          import json
-          import os
-          from pathlib import Path
-
-          path = Path('bucket/ffmpeg-marc-shared.json')
-          old_path = Path('bucket/ffmpeg-nonfree-marcshared.json')
-          data = json.loads(path.read_text() if path.exists() else old_path.read_text())
-
-          version = os.environ['PACKAGE_VERSION']
-          zip_url = os.environ['ZIP_URL']
-          zip_hash = os.environ['ZIP_HASH']
-
-          data['version'] = version
-          data['architecture']['64bit']['url'] = zip_url
-          data['architecture']['64bit']['hash'] = zip_hash
-          data['checkver'] = {
-              'script': [
-                  "$ErrorActionPreference='Stop'",
-                  "$headers=@{ 'User-Agent'='Scoop-Checkver'; 'Accept'='application/vnd.github+json'; 'X-GitHub-Api-Version'='2022-11-28' }",
-                  "$releases=Invoke-RestMethod -Headers $headers -Uri 'https://api.github.com/repos/marcmy/FFmpeg-Builds/releases?per_page=50'",
-                  "$release=$releases | Where-Object { $_.tag_name -match '^ffmpeg-[0-9]{8}\\.[0-9]{6}-win64-marc-shared$' } | Select-Object -First 1",
-                  "if ($null -eq $release) { 'ffmpeg-00000000.000000-win64-marc-shared' } else { $release.tag_name }",
-              ],
-              'regex': r'^ffmpeg-([0-9]{8}\.[0-9]{6})-win64-marc-shared$',
-              'replace': '$1',
-          }
-          data['autoupdate'] = {
-              'architecture': {
-                  '64bit': {
-                      'url': 'https://github.com/marcmy/FFmpeg-Builds/releases/download/ffmpeg-$version-win64-marc-shared/ffmpeg-$version-win64-marc-shared.zip'
-                  }
-              }
-          }
-
-          path.write_text(json.dumps(data, indent=4) + '\n')
-          PY
-
-          git config user.name "github-actions[bot]"
-          git config user.email "41898282+github-actions[bot]@users.noreply.github.com"
-          git add bucket/ffmpeg-marc-shared.json
-
-          if git diff --cached --quiet; then
-            echo "Scoop manifest already up to date."
-          else
-            git commit -m "Update ffmpeg-marc-shared to ${package_version}"
-            git remote set-url origin "https://x-access-token:${SCOOP_BUCKET_TOKEN}@github.com/marcmy/scoop-bucket.git"
-            git push origin HEAD:master
-          fi
-
-          cd ..
-          write_release_notes yes
-          gh release edit "$release_tag" \
-            --repo "$GITHUB_REPOSITORY" \
-            --notes-file release/release-notes.md \
-            --latest
-
-          cleanup_old_releases
+      - name: Upload Marc Shared release build log
+        if: ${{ always() }}
+        uses: actions/upload-artifact@v5
+        with:
+          name: marc-shared-release-build-log-${{ github.run_id }}-${{ github.run_attempt }}
+          path: logs/build-release-win64-marc-shared.log
+          if-no-files-found: warn
+          retention-days: 30
 
       - name: Save FFmpeg ccache
         if: ${{ always() }}

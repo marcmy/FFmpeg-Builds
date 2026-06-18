@@ -27,14 +27,12 @@ ffbuild_dockerbuild() {
     [[ -n "$lib" ]] || return -1
     install -Dm644 "$lib" "$FFBUILD_DESTDIR$FFBUILD_PREFIX/lib/libxeve.a"
 
-    # Do not leave import libraries in the prefix. If libxeve.dll.a exists,
-    # MinGW may prefer it over libxeve.a and produce an avcodec DLL that imports
-    # libxeve.dll even though no runtime DLL is shipped.
-    rm -f \
-        "$FFBUILD_DESTDIR$FFBUILD_PREFIX/lib/libxeve.dll.a" \
-        "$FFBUILD_DESTDIR$FFBUILD_PREFIX/lib/xeve.dll.a" \
-        "$FFBUILD_DESTDIR$FFBUILD_PREFIX/bin/libxeve.dll" \
-        "$FFBUILD_DESTDIR$FFBUILD_PREFIX/bin/xeve.dll"
+    # Do not leave import libraries in the prefix. With only libxeve.a present,
+    # -L${libdir} -lxeve resolves to the static archive while preserving the
+    # normal linker ordering used by FFmpeg's configure tests.
+    find "$FFBUILD_DESTDIR$FFBUILD_PREFIX" -type f \
+        \( -name 'libxeve.dll.a' -o -name 'xeve.dll.a' -o -name 'libxeve.dll' -o -name 'xeve.dll' \) \
+        -delete
 
     find inc -name '*.h' -type f -print0 | while IFS= read -r -d '' header; do
         install -Dm644 "$header" "$FFBUILD_DESTDIR$FFBUILD_PREFIX/include/$(basename "$header")"
@@ -61,7 +59,7 @@ includedir=\${prefix}/include
 Name: xeve
 Description: eXtra-fast Essential Video Encoder, MPEG-5 EVC
 Version: 0.5.1
-Libs: \${libdir}/libxeve.a
+Libs: -L\${libdir} -lxeve
 Libs.private: -lm
 Cflags: -DXEVE_STATIC_DEFINE -I\${includedir}
 EOF

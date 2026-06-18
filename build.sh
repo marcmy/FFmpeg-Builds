@@ -62,6 +62,22 @@ cat <<EOF >"$BUILD_SCRIPT"
     make -j\$(nproc) V=1
     make install install-doc
 
+    # Some optional dependency scripts may build MinGW runtime DLLs that FFmpeg
+    # links against dynamically. Those DLLs live in the image dependency prefix,
+    # not in FFmpeg's install prefix, so copy known runtime DLLs into the final
+    # package bin directory before packaging.
+    for runtime_dll in libxevd.dll xevd.dll libxeve.dll xeve.dll; do
+        if [[ -f "/ffbuild/prefix/bin/\$runtime_dll" ]]; then
+            continue
+        fi
+
+        runtime_src="\$(find /opt/ffbuild/bin /opt/ffbuild/lib -maxdepth 1 -iname "\$runtime_dll" -type f -print -quit 2>/dev/null || true)"
+        if [[ -n "\$runtime_src" ]]; then
+            echo "Copying dependency runtime DLL \$runtime_src into FFmpeg package bin"
+            cp -av "\$runtime_src" "/ffbuild/prefix/bin/\$(basename "\$runtime_src")"
+        fi
+    done
+
     if command -v ccache >/dev/null 2>&1 && [[ -d /ccache ]]; then
         ccache --show-stats || true
     fi

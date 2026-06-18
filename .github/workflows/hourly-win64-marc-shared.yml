@@ -156,8 +156,7 @@ jobs:
 
             git clone https://github.com/marcmy/scoop-bucket.git scoop-bucket
             python3 .github/scripts/update-scoop-manifest.py \
-              scoop-bucket/bucket/ffmpeg-marc-shared.json \
-              scoop-bucket/bucket/ffmpeg-nonfree-marcshared.json
+              scoop-bucket/bucket/ffmpeg-marc-shared.json
 
             cd scoop-bucket
             git config user.name "github-actions[bot]"

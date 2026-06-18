@@ -27,26 +27,22 @@ ffbuild_dockerbuild() {
     [[ -n "$lib" ]] || return -1
     install -Dm644 "$lib" "$FFBUILD_DESTDIR$FFBUILD_PREFIX/lib/libxevd.a"
 
-    # Upstream may still produce a MinGW runtime DLL/import pair even when the
-    # FFmpeg probe links successfully. Install the DLL into bin so shared Windows
-    # packages do not ship an ffmpeg.exe that depends on a missing libxevd.dll.
-    find ffbuild-build -type f \( -name 'libxevd.dll' -o -name 'xevd.dll' \) -print0 | while IFS= read -r -d '' dll; do
-        install -Dm755 "$dll" "$FFBUILD_DESTDIR$FFBUILD_PREFIX/bin/$(basename "$dll")"
-    done
-    find ffbuild-build -type f \( -name 'libxevd.dll.a' -o -name 'xevd.dll.a' \) -print0 | while IFS= read -r -d '' importlib; do
-        install -Dm644 "$importlib" "$FFBUILD_DESTDIR$FFBUILD_PREFIX/lib/$(basename "$importlib")"
-    done
+    # Do not leave import libraries in the prefix. If libxevd.dll.a exists,
+    # MinGW may prefer it over libxevd.a and produce an avcodec DLL that imports
+    # libxevd.dll even though no runtime DLL is shipped.
+    rm -f \
+        "$FFBUILD_DESTDIR$FFBUILD_PREFIX/lib/libxevd.dll.a" \
+        "$FFBUILD_DESTDIR$FFBUILD_PREFIX/lib/xevd.dll.a" \
+        "$FFBUILD_DESTDIR$FFBUILD_PREFIX/bin/libxevd.dll" \
+        "$FFBUILD_DESTDIR$FFBUILD_PREFIX/bin/xevd.dll"
 
     find inc -name '*.h' -type f -print0 | while IFS= read -r -d '' header; do
         install -Dm644 "$header" "$FFBUILD_DESTDIR$FFBUILD_PREFIX/include/$(basename "$header")"
     done
 
-    local export_header
-    export_header="$(find ffbuild-build -name 'xevd_exports.h' -type f -print -quit)"
-    if [[ -n "$export_header" ]]; then
-        install -Dm644 "$export_header" "$FFBUILD_DESTDIR$FFBUILD_PREFIX/include/xevd_exports.h"
-    else
-        cat > "$FFBUILD_DESTDIR$FFBUILD_PREFIX/include/xevd_exports.h" <<'EOF'
+    # Force static-consumer export semantics. Some generated export headers can
+    # mark symbols as DLL imports, which makes FFmpeg depend on libxevd.dll.
+    cat > "$FFBUILD_DESTDIR$FFBUILD_PREFIX/include/xevd_exports.h" <<'EOF'
 #ifndef XEVD_EXPORTS_H
 #define XEVD_EXPORTS_H
 #ifndef XEVD_EXPORT
@@ -54,7 +50,6 @@ ffbuild_dockerbuild() {
 #endif
 #endif
 EOF
-    fi
 
     mkdir -p "$FFBUILD_DESTDIR$FFBUILD_PREFIX/lib/pkgconfig"
     cat > "$FFBUILD_DESTDIR$FFBUILD_PREFIX/lib/pkgconfig/xevd.pc" <<EOF
@@ -66,7 +61,7 @@ includedir=\${prefix}/include
 Name: xevd
 Description: eXtra-fast Essential Video Decoder, MPEG-5 EVC
 Version: 0.5.0
-Libs: -L\${libdir} -lxevd
+Libs: \${libdir}/libxevd.a
 Libs.private: -lm
 Cflags: -DXEVD_STATIC_DEFINE -I\${includedir}
 EOF

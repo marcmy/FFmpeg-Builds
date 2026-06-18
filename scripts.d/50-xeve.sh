@@ -11,7 +11,7 @@ ffbuild_enabled() {
 ffbuild_dockerbuild() {
     # Shallow/minimal clones may not have tags. Upstream CMake requires either
     # a git tag or version.txt matching vMAJOR.MINOR.PATCH.
-    [[ -f version.txt ]] || echo v0.5.0 > version.txt
+    [[ -f version.txt ]] || echo v0.5.1 > version.txt
 
     rm -rf ffbuild-build
     cmake -G Ninja -S . -B ffbuild-build -DCMAKE_TOOLCHAIN_FILE="$FFBUILD_CMAKE_TOOLCHAIN" -DCMAKE_BUILD_TYPE=Release -DCMAKE_INSTALL_PREFIX="$FFBUILD_PREFIX" \
@@ -55,7 +55,7 @@ includedir=\${prefix}/include
 
 Name: xeve
 Description: eXtra-fast Essential Video Encoder, MPEG-5 EVC
-Version: 0.5.0
+Version: 0.5.1
 Libs: -L\${libdir} -lxeve
 Libs.private: -lm
 Cflags: -DXEVE_STATIC_DEFINE -I\${includedir}

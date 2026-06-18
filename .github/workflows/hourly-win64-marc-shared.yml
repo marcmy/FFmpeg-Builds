@@ -104,7 +104,7 @@ jobs:
               echo "Keeping latest ${keep} Marc Shared releases; deleting older ones."
 
               gh api --paginate "repos/${GITHUB_REPOSITORY}/releases?per_page=100" \
-                --jq '.[] | select(.tag_name | test("^ffmpeg-[0-9]{8}\\.[0-9]{6}-win64-(marc-shared|nonfree-marcshared)$")) | .tag_name' |
+                --jq '.[] | select(.tag_name | test("^ffmpeg-[0-9]{8}\\.[0-9]{6}-win64-(marc-shared)$")) | .tag_name' |
               while IFS= read -r tag; do
                 index=$((index + 1))
 
@@ -240,8 +240,6 @@ jobs:
 
           prune_prefix "ffmpeg-download-cache-${RUNNER_OS}-${TARGET}-${VARIANT}-" 1
           prune_prefix "ffmpeg-ccache-${RUNNER_OS}-${TARGET}-${VARIANT}-" 1
-          prune_prefix "ffmpeg-download-cache-${RUNNER_OS}-win64-nonfree-marcshared-" 0
-          prune_prefix "ffmpeg-ccache-${RUNNER_OS}-win64-nonfree-marcshared-" 0
 
       - name: Fail if Marc Shared release build failed
         if: ${{ always() }}

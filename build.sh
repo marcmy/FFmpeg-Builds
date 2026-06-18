@@ -70,11 +70,11 @@ copy_runtime_dlls() {
     required_tmp="$(mktemp)"
     trap 'rm -f "$required_tmp"' RETURN
 
-    for exe in "$exe_dir"/*.exe; do
-        [[ -f "$exe" ]] || continue
-        echo "Inspecting runtime DLL imports for $(basename "$exe")"
-        x86_64-w64-mingw32-objdump -p "$exe" |
-            awk '/DLL Name:/ { print tolower($3) }' >> "$required_tmp"
+    for binary in "$exe_dir"/*.exe "$exe_dir"/*.dll; do
+        [[ -f "$binary" ]] || continue
+        echo "Inspecting runtime DLL imports for $(basename "$binary")"
+        x86_64-w64-mingw32-objdump -p "$binary" |
+            awk '/DLL Name:/ { print tolower($3) }' >> "$required_tmp" || true
     done
 
     while IFS= read -r dll; do
@@ -82,6 +82,9 @@ copy_runtime_dlls() {
 
         case "$dll" in
             avcodec-*.dll|avdevice-*.dll|avfilter-*.dll|avformat-*.dll|avutil-*.dll|postproc-*.dll|swresample-*.dll|swscale-*.dll)
+                continue
+                ;;
+            api-ms-*.dll|ext-ms-*.dll|ucrtbase.dll)
                 continue
                 ;;
             kernel32.dll|user32.dll|gdi32.dll|advapi32.dll|shell32.dll|ole32.dll|oleaut32.dll|uuid.dll|ws2_32.dll|winmm.dll|shlwapi.dll|bcrypt.dll|crypt32.dll|secur32.dll|mfplat.dll|mfreadwrite.dll|mfuuid.dll|strmiids.dll|vfw32.dll|version.dll|setupapi.dll|cfgmgr32.dll|comdlg32.dll|comctl32.dll|dwmapi.dll|dxgi.dll|d3d11.dll|d3d12.dll|dxva2.dll|opengl32.dll|imm32.dll|normaliz.dll|ntdll.dll|msvcrt.dll)

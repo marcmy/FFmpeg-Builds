@@ -87,12 +87,34 @@ jobs:
         env:
           BUILDKIT_PROGRESS: plain
         run: |
-          FFBUILD_LOCAL_FINAL_CACHE=0 \
-          FFBUILD_DOCKER_CACHE_FROM="$(printf '%s\n%s' \
-            "type=registry,ref=${TARGET_REPO}/win64-marc-shared:buildcache" \
-            "type=registry,ref=${TARGET_REPO}/win64-nonfree-marcshared:buildcache")" \
-          FFBUILD_DOCKER_CACHE_TO="type=registry,ref=${TARGET_REPO}/win64-marc-shared:buildcache,mode=max" \
-          QUICKBUILD=1 NOCLEAN=1 ./makeimage.sh "$TARGET" "$VARIANT"
+          mkdir -p logs
+          set +e
+          {
+            echo "=== Build win64 Marc Shared image ==="
+            echo "Run ID: ${GITHUB_RUN_ID}"
+            echo "Run attempt: ${GITHUB_RUN_ATTEMPT}"
+            echo "Repository SHA: ${GITHUB_SHA}"
+            echo "UTC start: $(date -u +'%Y-%m-%dT%H:%M:%SZ')"
+            echo
+
+            FFBUILD_LOCAL_FINAL_CACHE=0 \
+            FFBUILD_DOCKER_CACHE_FROM="$(printf '%s\n%s' \
+              "type=registry,ref=${TARGET_REPO}/win64-marc-shared:buildcache" \
+              "type=registry,ref=${TARGET_REPO}/win64-nonfree-marcshared:buildcache")" \
+            FFBUILD_DOCKER_CACHE_TO="type=registry,ref=${TARGET_REPO}/win64-marc-shared:buildcache,mode=max" \
+            QUICKBUILD=1 NOCLEAN=1 ./makeimage.sh "$TARGET" "$VARIANT"
+          } 2>&1 | tee logs/build-win64-marc-shared-image.log
+          status=${PIPESTATUS[0]}
+          exit "$status"
+
+      - name: Upload Marc Shared image build log
+        if: ${{ always() }}
+        uses: actions/upload-artifact@v5
+        with:
+          name: marc-shared-image-build-log-${{ github.run_id }}-${{ github.run_attempt }}
+          path: logs/build-win64-marc-shared-image.log
+          if-no-files-found: warn
+          retention-days: 30
 
       - name: Save FFmpeg source download cache
         if: ${{ always() && steps.ffmpeg-download-cache.outputs.cache-hit != 'true' }}

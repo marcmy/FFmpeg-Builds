@@ -64,5 +64,5 @@ jobs:
 
           prune_prefix "ffmpeg-cache-Linux-win64-marc-shared-" 2
           prune_prefix "ffmpeg-download-cache-Linux-win64-marc-shared-" 1
-          prune_prefix "ffmpeg-cache-Linux-win64-nonfree-marcshared-" 1
-          prune_prefix "ffmpeg-download-cache-Linux-win64-nonfree-marcshared-" 1
+          prune_prefix "ffmpeg-cache-Linux-win64-nonfree-marcshared-" 0
+          prune_prefix "ffmpeg-download-cache-Linux-win64-nonfree-marcshared-" 0

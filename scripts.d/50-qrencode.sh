@@ -4,7 +4,7 @@ SCRIPT_REPO="https://github.com/fukuchi/libqrencode.git"
 SCRIPT_COMMIT="v4.1.1"
 
 ffbuild_enabled() {
-    [[ $VARIANT == *marcshared* ]] || return -1
+    [[ $VARIANT == *marc-shared* ]] || return -1
     return 0
 }
 

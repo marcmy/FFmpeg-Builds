@@ -33,55 +33,91 @@ fi
 BUILD_SCRIPT="$(mktemp)"
 trap "rm -f -- '$BUILD_SCRIPT'" EXIT
 
-cat <<EOF >"$BUILD_SCRIPT"
-    set -xe
-    cd /ffbuild
-    rm -rf ffmpeg prefix
+cat <<'EOF' >"$BUILD_SCRIPT"
+set -xe
+cd /ffbuild
+rm -rf ffmpeg prefix
 
-    if command -v ccache >/dev/null 2>&1 && [[ -d /ccache ]]; then
-        export CCACHE_DIR=/ccache
-        export CCACHE_COMPILERCHECK=content
-        export CCACHE_MAXSIZE="\${FFBUILD_CCACHE_MAX_SIZE:-5G}"
-        ccache --set-config=max_size="\$CCACHE_MAXSIZE" || true
-        ccache --zero-stats || true
+if command -v ccache >/dev/null 2>&1 && [[ -d /ccache ]]; then
+    export CCACHE_DIR=/ccache
+    export CCACHE_COMPILERCHECK=content
+    export CCACHE_MAXSIZE="${FFBUILD_CCACHE_MAX_SIZE:-5G}"
+    ccache --set-config=max_size="$CCACHE_MAXSIZE" || true
+    ccache --zero-stats || true
 
-        mkdir -p /tmp/ccache-wrappers
-        ln -sf "\$(command -v ccache)" "/tmp/ccache-wrappers/\$CC"
-        ln -sf "\$(command -v ccache)" "/tmp/ccache-wrappers/\$CXX"
-        export PATH="/tmp/ccache-wrappers:\$PATH"
-    fi
+    mkdir -p /tmp/ccache-wrappers
+    ln -sf "$(command -v ccache)" "/tmp/ccache-wrappers/$CC"
+    ln -sf "$(command -v ccache)" "/tmp/ccache-wrappers/$CXX"
+    export PATH="/tmp/ccache-wrappers:$PATH"
+fi
 
-    git clone --filter=blob:none --branch='$GIT_BRANCH' '$FFMPEG_REPO' ffmpeg
-    cd ffmpeg
+git clone --filter=blob:none --branch='__GIT_BRANCH__' '__FFMPEG_REPO__' ffmpeg
+cd ffmpeg
 
-    ./configure --prefix=/ffbuild/prefix --pkg-config-flags="--static" \$FFBUILD_TARGET_FLAGS \$FF_CONFIGURE \
-        --extra-cflags="\$FF_CFLAGS" --extra-cxxflags="\$FF_CXXFLAGS" --extra-libs="\$FF_LIBS" \
-        --extra-ldflags="\$FF_LDFLAGS" --extra-ldexeflags="\$FF_LDEXEFLAGS" \
-        --cc="\$CC" --cxx="\$CXX" --ar="\$AR" --ranlib="\$RANLIB" --nm="\$NM" \
-        --extra-version="\$(date +%Y%m%d)" || { cat ffbuild/config.log; exit 1; }
-    make -j\$(nproc) V=1
-    make install install-doc
+./configure --prefix=/ffbuild/prefix --pkg-config-flags="--static" $FFBUILD_TARGET_FLAGS $FF_CONFIGURE \
+    --extra-cflags="$FF_CFLAGS" --extra-cxxflags="$FF_CXXFLAGS" --extra-libs="$FF_LIBS" \
+    --extra-ldflags="$FF_LDFLAGS" --extra-ldexeflags="$FF_LDEXEFLAGS" \
+    --cc="$CC" --cxx="$CXX" --ar="$AR" --ranlib="$RANLIB" --nm="$NM" \
+    --extra-version="$(date +%Y%m%d)" || { cat ffbuild/config.log; exit 1; }
+make -j$(nproc) V=1
+make install install-doc
 
-    # Some optional dependency scripts may build MinGW runtime DLLs that FFmpeg
-    # links against dynamically. Those DLLs live in the image dependency prefix,
-    # not in FFmpeg's install prefix, so copy known runtime DLLs into the final
-    # package bin directory before packaging.
-    for runtime_dll in libxevd.dll xevd.dll libxeve.dll xeve.dll; do
-        if [[ -f "/ffbuild/prefix/bin/\$runtime_dll" ]]; then
+copy_runtime_dlls() {
+    local exe_dir="/ffbuild/prefix/bin"
+    local required_tmp
+    local missing=0
+
+    required_tmp="$(mktemp)"
+    trap 'rm -f "$required_tmp"' RETURN
+
+    for exe in "$exe_dir"/*.exe; do
+        [[ -f "$exe" ]] || continue
+        echo "Inspecting runtime DLL imports for $(basename "$exe")"
+        x86_64-w64-mingw32-objdump -p "$exe" |
+            awk '/DLL Name:/ { print tolower($3) }' >> "$required_tmp"
+    done
+
+    sort -u "$required_tmp" | while IFS= read -r dll; do
+        [[ -n "$dll" ]] || continue
+
+        case "$dll" in
+            avcodec-*.dll|avdevice-*.dll|avfilter-*.dll|avformat-*.dll|avutil-*.dll|postproc-*.dll|swresample-*.dll|swscale-*.dll)
+                continue
+                ;;
+            kernel32.dll|user32.dll|gdi32.dll|advapi32.dll|shell32.dll|ole32.dll|oleaut32.dll|uuid.dll|ws2_32.dll|winmm.dll|shlwapi.dll|bcrypt.dll|crypt32.dll|secur32.dll|mfplat.dll|mfreadwrite.dll|mfuuid.dll|strmiids.dll|vfw32.dll|version.dll|setupapi.dll|cfgmgr32.dll|comdlg32.dll|comctl32.dll|dwmapi.dll|dxgi.dll|d3d11.dll|d3d12.dll|dxva2.dll|opengl32.dll|imm32.dll|normaliz.dll|ntdll.dll|msvcrt.dll)
+                continue
+                ;;
+        esac
+
+        if [[ -f "$exe_dir/$dll" ]]; then
             continue
         fi
 
-        runtime_src="\$(find /opt/ffbuild/bin /opt/ffbuild/lib -maxdepth 1 -iname "\$runtime_dll" -type f -print -quit 2>/dev/null || true)"
-        if [[ -n "\$runtime_src" ]]; then
-            echo "Copying dependency runtime DLL \$runtime_src into FFmpeg package bin"
-            cp -av "\$runtime_src" "/ffbuild/prefix/bin/\$(basename "\$runtime_src")"
+        runtime_src="$(find /opt/ffbuild /usr/x86_64-w64-mingw32 -iname "$dll" -type f -print -quit 2>/dev/null || true)"
+        if [[ -n "$runtime_src" ]]; then
+            echo "Copying dependency runtime DLL $runtime_src into FFmpeg package bin"
+            cp -av "$runtime_src" "$exe_dir/$(basename "$runtime_src")"
+            continue
         fi
+
+        echo "Missing runtime DLL required by packaged FFmpeg binaries: $dll"
+        missing=1
     done
 
-    if command -v ccache >/dev/null 2>&1 && [[ -d /ccache ]]; then
-        ccache --show-stats || true
-    fi
+    return "$missing"
+}
+
+copy_runtime_dlls
+
+if command -v ccache >/dev/null 2>&1 && [[ -d /ccache ]]; then
+    ccache --show-stats || true
+fi
 EOF
+
+sed -i \
+    -e "s|__GIT_BRANCH__|$GIT_BRANCH|g" \
+    -e "s|__FFMPEG_REPO__|$FFMPEG_REPO|g" \
+    "$BUILD_SCRIPT"
 
 [[ -t 1 ]] && TTY_ARG="-t" || TTY_ARG=""
 

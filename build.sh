@@ -77,7 +77,7 @@ copy_runtime_dlls() {
             awk '/DLL Name:/ { print tolower($3) }' >> "$required_tmp"
     done
 
-    sort -u "$required_tmp" | while IFS= read -r dll; do
+    while IFS= read -r dll; do
         [[ -n "$dll" ]] || continue
 
         case "$dll" in
@@ -102,7 +102,7 @@ copy_runtime_dlls() {
 
         echo "Missing runtime DLL required by packaged FFmpeg binaries: $dll"
         missing=1
-    done
+    done < <(sort -u "$required_tmp")
 
     return "$missing"
 }

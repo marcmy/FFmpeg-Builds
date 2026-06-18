@@ -33,6 +33,9 @@ ffbuild_depends() {
         echo cairo
         echo lensfun
         echo libcdio-paranoia
+        echo svtjpegxs
+        echo xevd
+        echo xeve
     fi
 }
 

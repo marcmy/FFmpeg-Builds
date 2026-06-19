@@ -26,10 +26,14 @@ ffbuild_dockerbuild() {
     add_meson_option() {
         local name="$1"
         local value="$2"
+        local options_file
 
-        if [[ -f meson_options.txt ]] && grep -Eq "option\(['\"]${name}['\"]" meson_options.txt; then
-            myconf+=("-D${name}=${value}")
-        fi
+        for options_file in meson.options meson_options.txt; do
+            if [[ -f "$options_file" ]] && grep -Eq "option\(['\"]${name}['\"]" "$options_file"; then
+                myconf+=("-D${name}=${value}")
+                return 0
+            fi
+        done
     }
 
     add_meson_option tests false
@@ -58,6 +62,18 @@ ffbuild_dockerbuild() {
     meson setup ffbuild-build "${myconf[@]}"
     ninja -C ffbuild-build -j$(nproc)
     DESTDIR="$FFBUILD_DESTDIR" ninja -C ffbuild-build install
+
+    # run_stage removes the installed bin directory because target executables
+    # cannot run on the Linux builder. Preserve GLib's architecture-neutral
+    # Python build tools elsewhere so Pango/librsvg can use them while crossing.
+    local host_tools_dir="$FFBUILD_DESTDIR$FFBUILD_PREFIX/libexec/ffbuild-glib-tools"
+    local tool
+    mkdir -p "$host_tools_dir"
+    for tool in glib-mkenums glib-genmarshal gdbus-codegen glib-gettextize gtester-report; do
+        if [[ -f "$FFBUILD_DESTDIR$FFBUILD_PREFIX/bin/$tool" ]]; then
+            install -m755 "$FFBUILD_DESTDIR$FFBUILD_PREFIX/bin/$tool" "$host_tools_dir/$tool"
+        fi
+    done
 
     if [[ -f "$FFBUILD_DESTDIR$FFBUILD_PREFIX/lib/pkgconfig/glib-2.0.pc" ]]; then
         if grep -q '^Libs.private:' "$FFBUILD_DESTDIR$FFBUILD_PREFIX/lib/pkgconfig/glib-2.0.pc"; then

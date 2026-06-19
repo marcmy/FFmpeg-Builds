@@ -82,6 +82,24 @@ jobs:
             package_version="$(date -u +'%Y%m%d.%H%M%S')"
             release_tag="ffmpeg-${package_version}-win64-marc-shared"
             zip_name="ffmpeg-${package_version}-win64-marc-shared.zip"
+            release_created=0
+            release_safe_to_keep=0
+
+            rollback_incomplete_release() {
+              local status="$?"
+              trap - EXIT
+
+              if (( status != 0 && release_created == 1 && release_safe_to_keep == 0 )); then
+                echo "Workflow failed after creating ${release_tag}; deleting incomplete release and tag."
+                gh release delete "$release_tag" \
+                  --repo "$GITHUB_REPOSITORY" \
+                  --cleanup-tag \
+                  --yes || echo "Failed to delete incomplete release ${release_tag}; manual cleanup may be needed."
+              fi
+
+              exit "$status"
+            }
+            trap rollback_incomplete_release EXIT
 
             echo "Upstream FFmpeg master SHA: ${ffmpeg_sha}"
             echo "Package version: ${package_version}"
@@ -141,6 +159,7 @@ jobs:
               --title "FFmpeg win64 Marc Shared ${package_version}" \
               --notes-file release/release-notes.md \
               --latest
+            release_created=1
 
             if [[ -z "${SCOOP_BUCKET_TOKEN:-}" ]]; then
               echo "SCOOP_BUCKET_TOKEN is not set; skipping scoop manifest update."
@@ -173,6 +192,7 @@ jobs:
             fi
 
             cd ..
+            release_safe_to_keep=1
             write_release_notes yes
             gh release edit "$release_tag" \
               --repo "$GITHUB_REPOSITORY" \

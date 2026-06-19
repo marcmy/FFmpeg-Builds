@@ -9,6 +9,19 @@ ffbuild_enabled() {
 }
 
 ffbuild_dockerbuild() {
+    python3 - <<'PY'
+from pathlib import Path
+
+path = Path("librabbitmq/amqp_socket.c")
+text = path.read_text()
+old = "static int connect_socket(struct addrinfo *addr, amqp_time_t deadline) {\n  int one = 1;"
+new = "static int connect_socket(struct addrinfo *addr, amqp_time_t deadline) {\n  u_long one = 1;"
+if text.count(old) != 2:
+    raise SystemExit("Unexpected rabbitmq-c connect_socket layout")
+text = text.replace(old, new, 1)
+path.write_text(text)
+PY
+
     cmake -G Ninja -S . -B ffbuild-build -DCMAKE_TOOLCHAIN_FILE="$FFBUILD_CMAKE_TOOLCHAIN" -DCMAKE_BUILD_TYPE=Release -DCMAKE_INSTALL_PREFIX="$FFBUILD_PREFIX" \
         -DBUILD_SHARED_LIBS=OFF \
         -DBUILD_STATIC_LIBS=ON \

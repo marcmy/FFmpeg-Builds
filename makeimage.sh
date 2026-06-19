@@ -68,7 +68,10 @@ if [[ -n "${FFBUILD_DOCKER_CACHE_FROM:-}" ]]; then
 fi
 
 if [[ -n "${FFBUILD_DOCKER_CACHE_TO:-}" ]]; then
-    FINAL_CACHE_ARGS+=(--cache-to="${FFBUILD_DOCKER_CACHE_TO}")
+    while IFS= read -r cache_to; do
+        [[ -n "$cache_to" ]] || continue
+        FINAL_CACHE_ARGS+=(--cache-to="$cache_to")
+    done <<< "$FFBUILD_DOCKER_CACHE_TO"
 fi
 
 docker buildx --builder ffbuilder build \

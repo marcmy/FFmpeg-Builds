@@ -20,6 +20,10 @@ ffbuild_depends() {
         echo lc3
         echo qrencode
         echo quirc
+        echo mpeghdec
+        echo pocketsphinx
+        echo librabbitmq
+        echo librtmp
         echo ladspa
         echo lcms2
         echo bs2b

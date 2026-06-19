@@ -1,7 +1,7 @@
 #!/bin/bash
 
 SCRIPT_REPO="https://github.com/cmusphinx/pocketsphinx.git"
-SCRIPT_COMMIT="master"
+SCRIPT_COMMIT="main"
 
 ffbuild_enabled() {
     [[ $VARIANT == *marc-shared* ]] || return -1

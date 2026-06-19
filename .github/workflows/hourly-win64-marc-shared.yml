@@ -15,6 +15,7 @@ permissions:
 
 env:
   UPSTREAM_REPO: https://github.com/FFmpeg/FFmpeg.git
+  TARGET_REPO: ghcr.io/marcmy/ffmpeg-builds
   TARGET: win64
   VARIANT: marc-shared
   FFMPEG_REPO_OVERRIDE: https://github.com/FFmpeg/FFmpeg.git
@@ -43,6 +44,8 @@ jobs:
 
       - name: Checkout
         uses: actions/checkout@v6
+        with:
+          fetch-depth: 0
 
       - name: Restore FFmpeg ccache
         id: ffmpeg-ccache
@@ -77,6 +80,38 @@ jobs:
             echo "UTC start: $(date -u +'%Y-%m-%dT%H:%M:%SZ')"
             echo
 
+            resolve_image_input_sha() {
+              local payload_sha=""
+
+              if [[ "$GITHUB_EVENT_NAME" == "repository_dispatch" ]]; then
+                payload_sha="$(jq -r '.client_payload.image_input_sha // empty' "$GITHUB_EVENT_PATH")"
+                if [[ -n "$payload_sha" ]]; then
+                  printf '%s\n' "$payload_sha"
+                  return 0
+                fi
+              fi
+
+              git log -1 --format=%H -- \
+                .github/buildkit.toml \
+                .github/workflows/build-win64-marc-shared-image.yml \
+                addins \
+                images \
+                patches \
+                scripts.d \
+                util \
+                variants \
+                download.sh \
+                generate.sh \
+                makeimage.sh
+            }
+
+            image_input_sha="$(resolve_image_input_sha)"
+            if [[ -z "$image_input_sha" ]]; then
+              echo "Unable to resolve the dependency image input revision."
+              exit 1
+            fi
+            image_ref="${TARGET_REPO}/win64-marc-shared:source-${image_input_sha}"
+
             ffmpeg_sha="$(git ls-remote "$UPSTREAM_REPO" refs/heads/master | awk '{print $1}')"
             ffmpeg_short="${ffmpeg_sha:0:12}"
             package_version="$(date -u +'%Y%m%d.%H%M%S')"
@@ -102,6 +137,8 @@ jobs:
             trap rollback_incomplete_release EXIT
 
             echo "Upstream FFmpeg master SHA: ${ffmpeg_sha}"
+            echo "Dependency image input SHA: ${image_input_sha}"
+            echo "Dependency image: ${image_ref}"
             echo "Package version: ${package_version}"
             echo "Release tag: ${release_tag}"
 
@@ -109,11 +146,24 @@ jobs:
               latest_body="$(gh release view --repo "$GITHUB_REPOSITORY" --json body -q .body 2>/dev/null || true)"
               if grep -Fq "Upstream FFmpeg master SHA: ${ffmpeg_sha}" <<< "$latest_body" && \
                  grep -Fq "Builder repository SHA: ${GITHUB_SHA}" <<< "$latest_body" && \
+                 grep -Fq "Dependency image input SHA: ${image_input_sha}" <<< "$latest_body" && \
                  grep -Fq "Scoop manifest updated: yes" <<< "$latest_body"; then
-                echo "Latest release already contains upstream SHA ${ffmpeg_sha}, builder SHA ${GITHUB_SHA}, and a completed Scoop update; skipping scheduled build."
+                echo "Latest release already contains upstream SHA ${ffmpeg_sha}, builder SHA ${GITHUB_SHA}, dependency image ${image_input_sha}, and a completed Scoop update; skipping scheduled build."
                 exit 0
               fi
             fi
+
+            if ! docker pull "$image_ref"; then
+              if [[ "$GITHUB_EVENT_NAME" == "schedule" ]]; then
+                echo "Matching dependency image ${image_ref} is not ready; skipping this scheduled release instead of using stale :latest."
+                exit 0
+              fi
+
+              echo "Matching dependency image ${image_ref} is unavailable. Refusing to build against stale :latest."
+              exit 1
+            fi
+
+            docker tag "$image_ref" "${TARGET_REPO}/win64-marc-shared:latest"
 
             cleanup_old_releases() {
               local keep="${MARC_SHARED_RELEASES_TO_KEEP:-5}"
@@ -146,8 +196,8 @@ jobs:
             sha256sum "release/${zip_name}" > release/checksums.sha256
 
             write_release_notes() {
-              printf 'Upstream FFmpeg master SHA: %s\nUpstream FFmpeg short SHA: %s\nBuilder repository SHA: %s\nScoop manifest updated: %s\n' \
-                "$ffmpeg_sha" "$ffmpeg_short" "$GITHUB_SHA" "$1" > release/release-notes.md
+              printf 'Upstream FFmpeg master SHA: %s\nUpstream FFmpeg short SHA: %s\nBuilder repository SHA: %s\nDependency image input SHA: %s\nScoop manifest updated: %s\n' \
+                "$ffmpeg_sha" "$ffmpeg_short" "$GITHUB_SHA" "$image_input_sha" "$1" > release/release-notes.md
             }
 
             write_release_notes pending

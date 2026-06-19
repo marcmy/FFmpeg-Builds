@@ -18,6 +18,11 @@ ffbuild_dockerbuild() {
 
     ninja -C ffbuild-build -j$(nproc)
     DESTDIR="$FFBUILD_DESTDIR" ninja -C ffbuild-build install
+
+    # FFmpeg includes <pocketsphinx/pocketsphinx.h>, while current
+    # PocketSphinx installs its umbrella header as <pocketsphinx.h>.
+    install -Dm644 include/pocketsphinx.h \
+        "$FFBUILD_DESTDIR$FFBUILD_PREFIX/include/pocketsphinx/pocketsphinx.h"
 }
 
 ffbuild_configure() {

@@ -6,7 +6,6 @@ SCRIPT_COMMIT="master"
 ffbuild_depends() {
     echo base
     echo zlib
-    echo gnutls
 }
 
 ffbuild_enabled() {
@@ -20,7 +19,7 @@ ffbuild_dockerbuild() {
         AR="$FFBUILD_TOOLCHAIN-ar" \
         RANLIB="$FFBUILD_TOOLCHAIN-ranlib" \
         SYS=mingw \
-        CRYPTO=GNUTLS \
+        CRYPTO= \
         XCFLAGS="$CFLAGS" \
         XLDFLAGS="$LDFLAGS" \
         prefix="$FFBUILD_PREFIX" \
@@ -40,9 +39,9 @@ includedir=\${prefix}/include
 Name: librtmp
 Description: RTMP client library
 Version: 2.4
-Requires.private: gnutls hogweed nettle zlib
+Requires.private: zlib
 Libs: -L\${libdir} -lrtmp
-Libs.private: -lgmp -lws2_32 -lwinmm -lgdi32
+Libs.private: -lws2_32 -lwinmm -lgdi32
 Cflags: -I\${includedir}
 EOF
 }
@@ -52,7 +51,7 @@ ffbuild_configure() {
 }
 
 ffbuild_libs() {
-    echo -lgmp -lws2_32 -lwinmm -lgdi32
+    echo -lws2_32 -lwinmm -lgdi32
 }
 
 ffbuild_unconfigure() {

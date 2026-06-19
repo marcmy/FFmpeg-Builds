@@ -53,6 +53,13 @@ fi
 
 FINAL_CACHE_ARGS=()
 
+trim_cache_spec() {
+    local value="$1"
+    value="${value#"${value%%[![:space:]]*}"}"
+    value="${value%"${value##*[![:space:]]}"}"
+    printf '%s' "$value"
+}
+
 if [[ "${FFBUILD_LOCAL_FINAL_CACHE:-1}" != 0 ]]; then
     FINAL_CACHE_ARGS+=(
         --cache-from=type=local,src=.cache/"${IMAGE/:/_}"
@@ -62,6 +69,7 @@ fi
 
 if [[ -n "${FFBUILD_DOCKER_CACHE_FROM:-}" ]]; then
     while IFS= read -r cache_from; do
+        cache_from="$(trim_cache_spec "$cache_from")"
         [[ -n "$cache_from" ]] || continue
         FINAL_CACHE_ARGS+=(--cache-from="$cache_from")
     done <<< "$FFBUILD_DOCKER_CACHE_FROM"
@@ -69,6 +77,7 @@ fi
 
 if [[ -n "${FFBUILD_DOCKER_CACHE_TO:-}" ]]; then
     while IFS= read -r cache_to; do
+        cache_to="$(trim_cache_spec "$cache_to")"
         [[ -n "$cache_to" ]] || continue
         FINAL_CACHE_ARGS+=(--cache-to="$cache_to")
     done <<< "$FFBUILD_DOCKER_CACHE_TO"

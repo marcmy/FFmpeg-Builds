@@ -15,13 +15,14 @@ The main custom build is:
 - Platform: Windows x86_64
 - FFmpeg source: upstream FFmpeg `master`
 - Linking style: shared FFmpeg libraries
-- Licensing: nonfree FFmpeg build, via the underlying `win64-nonfree-shared` variant
+- Licensing: GPLv3-or-later FFmpeg build, based on `win64-gpl-shared`
+- Nonfree components: disabled; the build does not use `--enable-nonfree`
 
-In plain English: this is meant to be the maximum-useful Windows FFmpeg build I actually want to run locally.
+In plain English: this is meant to be the maximum-useful Windows FFmpeg build I actually want to run locally while remaining outside FFmpeg's nonfree/unredistributable category.
 
 ## What It Tries To Include
 
-The `marc-shared` variant starts from the normal nonfree shared Windows dependency set, then layers on additional libraries that are useful but not always present in generic builds.
+The `marc-shared` variant starts from the normal GPL shared Windows dependency set, then layers on additional libraries that are useful but not always present in generic builds.
 
 Examples include:
 
@@ -113,14 +114,20 @@ Common variants include:
 - `gpl-shared`
 - `lgpl-shared`
 - `nonfree-shared`
-- `marc-shared` - my custom all-in-one shared Windows variant
+- `marc-shared` - my custom all-in-one GPL shared Windows variant
 
 Optional addins from the base project may still be used where supported, such as release-branch addins or debug builds.
+
+## Licensing Notes
+
+The Marc Shared build inherits from `win64-gpl-shared` and does not enable FFmpeg's `--enable-nonfree` mode. Its resulting FFmpeg binaries are therefore intended to be distributed under GPLv3-or-later rather than marked `nonfree and unredistributable`.
+
+`libfdk_aac` remains disabled. FFmpeg's native AAC decoder and encoder remain available, so normal AAC playback, decoding, and encoding do not depend on FDK AAC or `--enable-nonfree`.
+
+Redistribution still needs to follow the GPL and the license requirements of included dependencies, including providing the corresponding source and build modifications for distributed binaries.
 
 ## Notes
 
 This is not an official FFmpeg build, and it is not trying to be the smallest package. It is a personal all-in-one build aimed at having almost everything I am likely to need in one constantly refreshed Windows FFmpeg install.
-
-Because the current Marc Shared build inherits from `win64-nonfree-shared`, its binaries fall under FFmpeg's nonfree/unredistributable category. If I ever split out a GPL-only variant, the intended name is `marc-gpl-shared`.
 
 If a dependency breaks against FFmpeg master, the fix is usually to patch the dependency script, temporarily disable the problematic library, or wait for upstream to settle down. That is the tradeoff of tracking master with a broad dependency set.

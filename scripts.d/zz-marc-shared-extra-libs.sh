@@ -35,6 +35,7 @@ ffbuild_depends() {
         echo caca
         echo flite
         echo cairo
+        echo librsvg
         echo lensfun
         echo libcdio-paranoia
         echo svtjpegxs

@@ -49,6 +49,35 @@ jobs:
 
       - name: Checkout
         uses: actions/checkout@v6
+        with:
+          fetch-depth: 0
+
+      - name: Resolve image input revision
+        id: image-revision
+        run: |
+          set -euo pipefail
+          image_input_sha="$(
+            git log -1 --format=%H -- \
+              .github/buildkit.toml \
+              .github/workflows/build-win64-marc-shared-image.yml \
+              addins \
+              images \
+              patches \
+              scripts.d \
+              util \
+              variants \
+              download.sh \
+              generate.sh \
+              makeimage.sh
+          )"
+
+          if [[ -z "$image_input_sha" ]]; then
+            echo "Unable to resolve the image input revision."
+            exit 1
+          fi
+
+          echo "Image input revision: ${image_input_sha}"
+          echo "sha=${image_input_sha}" >> "$GITHUB_OUTPUT"
 
       - name: Restore FFmpeg source download cache
         id: ffmpeg-download-cache
@@ -93,6 +122,7 @@ jobs:
             echo "Run ID: ${GITHUB_RUN_ID}"
             echo "Run attempt: ${GITHUB_RUN_ATTEMPT}"
             echo "Repository SHA: ${GITHUB_SHA}"
+            echo "Image input revision: ${{ steps.image-revision.outputs.sha }}"
             echo "UTC start: $(date -u +'%Y-%m-%dT%H:%M:%SZ')"
             echo
 
@@ -124,11 +154,16 @@ jobs:
 
       - name: Push win64 Marc Shared image
         run: |
+          source_image="$TARGET_REPO/win64-marc-shared:source-${{ steps.image-revision.outputs.sha }}"
+          docker tag "$TARGET_REPO/win64-marc-shared:latest" "$source_image"
           docker push "$TARGET_REPO/win64-marc-shared:latest"
+          docker push "$source_image"
 
       - name: Trigger Marc Shared FFmpeg release
         env:
           GH_TOKEN: ${{ secrets.RELEASE_DISPATCH_TOKEN }}
+          IMAGE_INPUT_SHA: ${{ steps.image-revision.outputs.sha }}
         run: |
-          gh api repos/${GITHUB_REPOSITORY}/dispatches \
-            -f event_type=marc-shared-image-updated
+          jq -n --arg image_input_sha "$IMAGE_INPUT_SHA" \
+            '{event_type:"marc-shared-image-updated",client_payload:{image_input_sha:$image_input_sha}}' |
+          gh api "repos/${GITHUB_REPOSITORY}/dispatches" --input -

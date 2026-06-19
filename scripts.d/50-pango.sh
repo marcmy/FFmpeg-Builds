@@ -50,6 +50,12 @@ ffbuild_dockerbuild() {
     add_meson_option fontconfig enabled
     add_meson_option freetype enabled
 
+    # Pango 1.56.4 calls FcFreeTypeQueryAll() without including the header
+    # that declares it. Newer Pango includes this upstream.
+    if ! grep -q '^#include <fontconfig/fcfreetype.h>' pango/pangofc-fontmap.c; then
+        sed -i '/^#include <hb-ft.h>/a #include <fontconfig/fcfreetype.h>' pango/pangofc-fontmap.c
+    fi
+
     # GLib's pkg-config files point to $prefix/bin, but run_stage removes that
     # directory from cross-built dependencies. Recreate only the host-runnable
     # Python tools from the preserved GLib tool bundle.

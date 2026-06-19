@@ -166,4 +166,4 @@ jobs:
         run: |
           jq -n --arg image_input_sha "$IMAGE_INPUT_SHA" \
             '{event_type:"marc-shared-image-updated",client_payload:{image_input_sha:$image_input_sha}}' |
-          gh api "repos/${GITHUB_REPOSITORY}/dispatches" --input -
+          gh api --method POST "repos/${GITHUB_REPOSITORY}/dispatches" --input -

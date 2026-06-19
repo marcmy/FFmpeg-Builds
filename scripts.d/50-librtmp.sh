@@ -1,6 +1,6 @@
 #!/bin/bash
 
-SCRIPT_REPO="https://github.com/rtmpdump/rtmpdump.git"
+SCRIPT_REPO="https://github.com/mstorsjo/rtmpdump.git"
 SCRIPT_COMMIT="master"
 
 ffbuild_depends() {

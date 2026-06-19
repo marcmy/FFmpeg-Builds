@@ -8,6 +8,7 @@ ffbuild_depends() {
     echo pixman
     echo zlib
     echo libpng
+    echo glib2
 }
 
 ffbuild_enabled() {
@@ -25,10 +26,14 @@ ffbuild_dockerbuild() {
     add_meson_option() {
         local name="$1"
         local value="$2"
+        local options_file
 
-        if [[ -f meson_options.txt ]] && grep -Eq "option\(['\"]${name}['\"]" meson_options.txt; then
-            myconf+=("-D${name}=${value}")
-        fi
+        for options_file in meson.options meson_options.txt; do
+            if [[ -f "$options_file" ]] && grep -Eq "option\(['\"]${name}['\"]" "$options_file"; then
+                myconf+=("-D${name}=${value}")
+                return 0
+            fi
+        done
     }
 
     add_meson_option tests disabled

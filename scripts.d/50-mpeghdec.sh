@@ -20,6 +20,14 @@ if not lines[456].startswith("FDK_INLINE SHORT fMin"):
     raise SystemExit("Unexpected MPEG-H fMin location")
 del lines[453:459]
 path.write_text("".join(lines))
+
+pc = Path("mpeghdec.pc.in")
+text = pc.read_text()
+old = 'Cflags: -I"${includedir}"\n'
+new = 'Cflags: -I"${includedir}" -DMPEGHDEC_STATIC\n'
+if text.count(old) != 1:
+    raise SystemExit("Unexpected MPEG-H pkg-config template")
+pc.write_text(text.replace(old, new))
 PY
 
     cmake -G Ninja -S . -B ffbuild-build -DCMAKE_TOOLCHAIN_FILE="$FFBUILD_CMAKE_TOOLCHAIN" -DCMAKE_BUILD_TYPE=Release -DCMAKE_INSTALL_PREFIX="$FFBUILD_PREFIX" \

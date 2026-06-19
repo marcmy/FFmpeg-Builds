@@ -27,10 +27,14 @@ ffbuild_dockerbuild() {
     add_meson_option() {
         local name="$1"
         local value="$2"
+        local options_file
 
-        if [[ -f meson_options.txt ]] && grep -Eq "option\(['\"]${name}['\"]" meson_options.txt; then
-            myconf+=("-D${name}=${value}")
-        fi
+        for options_file in meson.options meson_options.txt; do
+            if [[ -f "$options_file" ]] && grep -Eq "option\(['\"]${name}['\"]" "$options_file"; then
+                myconf+=("-D${name}=${value}")
+                return 0
+            fi
+        done
     }
 
     add_meson_option introspection disabled
@@ -45,6 +49,20 @@ ffbuild_dockerbuild() {
     add_meson_option cairo enabled
     add_meson_option fontconfig enabled
     add_meson_option freetype enabled
+
+    # GLib's pkg-config files point to $prefix/bin, but run_stage removes that
+    # directory from cross-built dependencies. Recreate only the host-runnable
+    # Python tools from the preserved GLib tool bundle.
+    local host_tools_dir="$FFBUILD_PREFIX/libexec/ffbuild-glib-tools"
+    local tool
+    mkdir -p "$FFBUILD_PREFIX/bin"
+    for tool in glib-mkenums glib-genmarshal; do
+        if [[ ! -x "$host_tools_dir/$tool" ]]; then
+            echo "Missing preserved GLib host tool: $host_tools_dir/$tool"
+            return 1
+        fi
+        ln -sf "../libexec/ffbuild-glib-tools/$tool" "$FFBUILD_PREFIX/bin/$tool"
+    done
 
     rm -rf ffbuild-build
     meson setup ffbuild-build "${myconf[@]}"

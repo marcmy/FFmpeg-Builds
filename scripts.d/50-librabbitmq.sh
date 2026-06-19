@@ -18,8 +18,31 @@ old = "static int connect_socket(struct addrinfo *addr, amqp_time_t deadline) {\
 new = "static int connect_socket(struct addrinfo *addr, amqp_time_t deadline) {\n  u_long one = 1;"
 if text.count(old) != 2:
     raise SystemExit("Unexpected rabbitmq-c connect_socket layout")
-text = text.replace(old, new, 1)
-path.write_text(text)
+path.write_text(text.replace(old, new, 1))
+
+path = Path("librabbitmq/CMakeLists.txt")
+text = path.read_text()
+old = "set_target_properties(rabbitmq-static PROPERTIES OUTPUT_NAME librabbitmq.${RMQ_SOVERSION})"
+new = "set_target_properties(rabbitmq-static PROPERTIES OUTPUT_NAME rabbitmq)"
+if text.count(old) != 1:
+    raise SystemExit("Unexpected rabbitmq-c static output-name layout")
+path.write_text(text.replace(old, new))
+
+path = Path("librabbitmq.pc.in")
+text = path.read_text()
+old = "Cflags: -I${includedir}\n"
+new = "Cflags: -I${includedir} -DAMQP_STATIC\n"
+if text.count(old) != 1:
+    raise SystemExit("Unexpected rabbitmq-c pkg-config template")
+path.write_text(text.replace(old, new))
+
+path = Path("CMakeLists.txt")
+text = path.read_text()
+old = 'set(libs_private "${libs_private} -l${LIBRT}")'
+new = 'if(LIBRT)\n  set(libs_private "${libs_private} -l${LIBRT}")\nendif()'
+if text.count(old) != 1:
+    raise SystemExit("Unexpected rabbitmq-c LIBRT metadata layout")
+path.write_text(text.replace(old, new))
 PY
 
     cmake -G Ninja -S . -B ffbuild-build -DCMAKE_TOOLCHAIN_FILE="$FFBUILD_CMAKE_TOOLCHAIN" -DCMAKE_BUILD_TYPE=Release -DCMAKE_INSTALL_PREFIX="$FFBUILD_PREFIX" \

@@ -9,6 +9,19 @@ ffbuild_enabled() {
 }
 
 ffbuild_dockerbuild() {
+    python3 - <<'PY'
+from pathlib import Path
+
+path = Path("src/libFDK/include/common_fix.h")
+lines = path.read_text().splitlines(keepends=True)
+if not lines[453].startswith("FDK_INLINE SHORT fMax"):
+    raise SystemExit("Unexpected MPEG-H fMax location")
+if not lines[456].startswith("FDK_INLINE SHORT fMin"):
+    raise SystemExit("Unexpected MPEG-H fMin location")
+del lines[453:459]
+path.write_text("".join(lines))
+PY
+
     cmake -G Ninja -S . -B ffbuild-build -DCMAKE_TOOLCHAIN_FILE="$FFBUILD_CMAKE_TOOLCHAIN" -DCMAKE_BUILD_TYPE=Release -DCMAKE_INSTALL_PREFIX="$FFBUILD_PREFIX" \
         -DBUILD_SHARED_LIBS=OFF \
         -Dmpeghdec_BUILD_BINARIES=OFF \

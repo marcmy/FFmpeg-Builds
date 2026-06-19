@@ -7,6 +7,7 @@ ffbuild_depends() {
     echo base
     echo pixman
     echo zlib
+    echo libpng
 }
 
 ffbuild_enabled() {
@@ -35,7 +36,7 @@ ffbuild_dockerbuild() {
     add_meson_option perf-tests disabled
     add_meson_option spectre disabled
     add_meson_option symbol-lookup disabled
-    add_meson_option png disabled
+    add_meson_option png enabled
     add_meson_option xlib disabled
     add_meson_option xcb disabled
     add_meson_option quartz disabled

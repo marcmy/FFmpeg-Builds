@@ -21,6 +21,8 @@ ffbuild_dockerbuild() {
         RANLIB="$FFBUILD_TOOLCHAIN-ranlib" \
         SYS=mingw \
         CRYPTO=OPENSSL \
+        XCFLAGS="$CFLAGS" \
+        XLDFLAGS="$LDFLAGS" \
         prefix="$FFBUILD_PREFIX" \
         librtmp.a
 
@@ -40,7 +42,7 @@ Description: RTMP client library
 Version: 2.4
 Requires.private: libssl libcrypto zlib
 Libs: -L\${libdir} -lrtmp
-Libs.private: -lws2_32 -lwinmm
+Libs.private: -lws2_32 -lwinmm -lgdi32
 Cflags: -I\${includedir}
 EOF
 }
@@ -50,7 +52,7 @@ ffbuild_configure() {
 }
 
 ffbuild_libs() {
-    echo -lws2_32 -lwinmm
+    echo -lws2_32 -lwinmm -lgdi32
 }
 
 ffbuild_unconfigure() {

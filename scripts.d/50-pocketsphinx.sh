@@ -19,10 +19,49 @@ ffbuild_dockerbuild() {
     ninja -C ffbuild-build -j$(nproc)
     DESTDIR="$FFBUILD_DESTDIR" ninja -C ffbuild-build install
 
-    # FFmpeg includes <pocketsphinx/pocketsphinx.h>, while current
-    # PocketSphinx installs its umbrella header as <pocketsphinx.h>.
-    install -Dm644 include/pocketsphinx.h \
-        "$FFBUILD_DESTDIR$FFBUILD_PREFIX/include/pocketsphinx/pocketsphinx.h"
+    mkdir -p "$FFBUILD_DESTDIR$FFBUILD_PREFIX/include/pocketsphinx"
+    cat > "$FFBUILD_DESTDIR$FFBUILD_PREFIX/include/pocketsphinx/pocketsphinx.h" <<'EOF'
+#ifndef FFMPEG_POCKETSPHINX_COMPAT_H
+#define FFMPEG_POCKETSPHINX_COMPAT_H
+
+#include <pocketsphinx.h>
+
+typedef ps_config_t cmd_ln_t;
+
+static inline cmd_ln_t *cmd_ln_parse_r(cmd_ln_t *config, const ps_arg_t *defn,
+                                        int argc, char *argv[], int strict)
+{
+    int own_config = 0;
+    (void)strict;
+
+    if (config == NULL) {
+        config = ps_config_init(defn);
+        own_config = 1;
+    }
+    if (config == NULL)
+        return NULL;
+
+    for (int i = 0; i + 1 < argc; i += 2) {
+        const char *name = argv[i][0] == '-' ? argv[i] + 1 : argv[i];
+        const char *value = argv[i + 1];
+
+        if (value != NULL && ps_config_set_str(config, name, value) == NULL) {
+            if (own_config)
+                ps_config_free(config);
+            return NULL;
+        }
+    }
+
+    return config;
+}
+
+static inline int cmd_ln_free_r(cmd_ln_t *config)
+{
+    return ps_config_free(config);
+}
+
+#endif
+EOF
 }
 
 ffbuild_configure() {

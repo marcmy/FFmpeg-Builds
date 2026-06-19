@@ -4,7 +4,10 @@ SCRIPT_REPO="https://github.com/Fraunhofer-IIS/mpeghdec.git"
 SCRIPT_COMMIT="r3.0.3"
 
 ffbuild_enabled() {
-    [[ $VARIANT == *marc-shared* ]] || return -1
+    # FFmpeg classifies libmpeghdec as incompatible with GPL builds unless
+    # --enable-nonfree is used. Keep it out of the redistributable marc-shared
+    # variant; a future explicitly nonfree-prefixed Marc variant may enable it.
+    [[ $VARIANT == nonfree*marc-shared* ]] || return -1
     return 0
 }
 

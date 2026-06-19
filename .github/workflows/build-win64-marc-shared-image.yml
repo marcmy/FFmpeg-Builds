@@ -97,8 +97,10 @@ jobs:
             echo
 
             FFBUILD_LOCAL_FINAL_CACHE=0 \
-            FFBUILD_DOCKER_CACHE_FROM="type=registry,ref=${TARGET_REPO}/win64-marc-shared:buildcache" \
-            FFBUILD_DOCKER_CACHE_TO="type=registry,ref=${TARGET_REPO}/win64-marc-shared:buildcache,mode=max" \
+            FFBUILD_DOCKER_CACHE_FROM="type=registry,ref=${TARGET_REPO}/win64-marc-shared:buildcache
+          type=registry,ref=${TARGET_REPO}/win64-marc-shared:latest" \
+            FFBUILD_DOCKER_CACHE_TO="type=registry,ref=${TARGET_REPO}/win64-marc-shared:buildcache,mode=max
+          type=inline" \
             QUICKBUILD=1 NOCLEAN=1 ./makeimage.sh "$TARGET" "$VARIANT"
           } 2>&1 | tee logs/build-win64-marc-shared-image.log
           status=${PIPESTATUS[0]}
@@ -123,7 +125,7 @@ jobs:
       - name: Push win64 Marc Shared image
         run: |
           docker push "$TARGET_REPO/win64-marc-shared:latest"
-      
+
       - name: Trigger Marc Shared FFmpeg release
         env:
           GH_TOKEN: ${{ secrets.RELEASE_DISPATCH_TOKEN }}

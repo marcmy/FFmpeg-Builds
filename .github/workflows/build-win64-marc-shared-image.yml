@@ -111,6 +111,15 @@ jobs:
           docker push "$TARGET_REPO/base:latest"
           docker push "$TARGET_REPO/base-win64:latest"
 
+      - name: Inspect registry build cache
+        run: |
+          cache_ref="$TARGET_REPO/win64-marc-shared:buildcache"
+          if docker buildx imagetools inspect "$cache_ref"; then
+            echo "Registry build cache found: $cache_ref"
+          else
+            echo "::warning::Registry build cache is missing or unreadable: $cache_ref"
+          fi
+
       - name: Build win64 Marc Shared image
         env:
           BUILDKIT_PROGRESS: plain
@@ -127,13 +136,21 @@ jobs:
             echo
 
             FFBUILD_LOCAL_FINAL_CACHE=0 \
-            FFBUILD_DOCKER_CACHE_FROM="type=registry,ref=${TARGET_REPO}/win64-marc-shared:buildcache
-          type=registry,ref=${TARGET_REPO}/win64-marc-shared:latest" \
-            FFBUILD_DOCKER_CACHE_TO="type=registry,ref=${TARGET_REPO}/win64-marc-shared:buildcache,mode=max
-          type=inline" \
+            FFBUILD_DOCKER_CACHE_FROM="type=registry,ref=${TARGET_REPO}/win64-marc-shared:buildcache" \
+            FFBUILD_DOCKER_CACHE_TO="type=registry,ref=${TARGET_REPO}/win64-marc-shared:buildcache,mode=max" \
             QUICKBUILD=1 NOCLEAN=1 ./makeimage.sh "$TARGET" "$VARIANT"
           } 2>&1 | tee logs/build-win64-marc-shared-image.log
           status=${PIPESTATUS[0]}
+
+          cached_steps="$(grep -c ' CACHED$' logs/build-win64-marc-shared-image.log || true)"
+          cache_imports="$(grep -c 'importing cache manifest' logs/build-win64-marc-shared-image.log || true)"
+          echo "BuildKit cache imports: ${cache_imports}"
+          echo "BuildKit cached steps: ${cached_steps}"
+
+          if [[ "$cache_imports" == "0" ]]; then
+            echo "::warning::BuildKit did not report importing the registry build cache."
+          fi
+
           exit "$status"
 
       - name: Upload Marc Shared image build log

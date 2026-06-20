@@ -13,12 +13,6 @@ ffbuild_enabled() {
 }
 
 ffbuild_dockerbuild() {
-    # OpenColorIO 2.5.2 bundles a yaml-cpp revision whose emitterutils.cpp
-    # uses uint16_t/uint32_t without including <cstdint>. GCC 15 no longer
-    # accepts that accidental transitive include. CXXFLAGS is inherited by
-    # OCIO's CMake ExternalProject builds, so force the standard header there.
-    export CXXFLAGS="${CXXFLAGS:+$CXXFLAGS }-include cstdint"
-
     cmake -G Ninja -S . -B ffbuild-build \
         -DCMAKE_TOOLCHAIN_FILE="$FFBUILD_CMAKE_TOOLCHAIN" \
         -DCMAKE_BUILD_TYPE=Release \
@@ -39,6 +33,24 @@ ffbuild_dockerbuild() {
         -DOCIO_INSTALL_EXT_PACKAGES=ALL \
         -DOCIO_USE_SSE=OFF \
         -DOCIO_WARNING_AS_ERROR=OFF
+
+    # OCIO 2.5.2 downloads yaml-cpp 0.8.0 as an ExternalProject. Its
+    # emitterutils.cpp uses uint16_t/uint32_t without including <cstdint>,
+    # which GCC 15 rejects. Materialize the downloaded source, then patch it
+    # before the ExternalProject configure/build stamps are created.
+    local yaml_patch_stamp="ext/build/yaml-cpp/src/yaml-cpp_install-stamp/yaml-cpp_install-patch"
+    local yaml_source="ffbuild-build/ext/build/yaml-cpp/src/yaml-cpp_install/src/emitterutils.cpp"
+
+    ninja -C ffbuild-build "$yaml_patch_stamp"
+
+    if [[ ! -f "$yaml_source" ]]; then
+        echo "OpenColorIO yaml-cpp source was not downloaded: $yaml_source"
+        return 1
+    fi
+
+    if ! grep -q '^#include <cstdint>$' "$yaml_source"; then
+        sed -i '/#include "yaml-cpp\/null.h"/i #include <cstdint>' "$yaml_source"
+    fi
 
     ninja -C ffbuild-build -j$(nproc)
     DESTDIR="$FFBUILD_DESTDIR" ninja -C ffbuild-build install

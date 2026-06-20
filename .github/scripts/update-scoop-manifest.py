@@ -28,6 +28,12 @@ def main() -> int:
     zip_url = os.environ["ZIP_URL"]
     zip_hash = os.environ["ZIP_HASH"]
 
+    data["description"] = "Hourly FFmpeg master win64 GPLv3 shared build from Marc's FFmpeg-Builds fork"
+    data["license"] = "GPL-3.0-or-later"
+    data["notes"] = [
+        "Installs Marc's hourly FFmpeg master GPLv3 shared build.",
+        "Provides the regular ffmpeg, ffprobe, and ffplay shims. This will conflict with another Scoop package that also owns those shims.",
+    ]
     data["version"] = version
     data["architecture"]["64bit"]["url"] = zip_url
     data["architecture"]["64bit"]["hash"] = zip_hash

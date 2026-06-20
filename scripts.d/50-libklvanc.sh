@@ -13,6 +13,12 @@ ffbuild_enabled() {
 }
 
 ffbuild_dockerbuild() {
+    # libklvanc assumes glibc-style <sys/errno.h>; MinGW provides the standard
+    # <errno.h> instead. Patch both public/private headers before configuring.
+    grep -RIl '#include <sys/errno.h>' src | while IFS= read -r header; do
+        sed -i 's|#include <sys/errno.h>|#include <errno.h>|g' "$header"
+    done
+
     ./autogen.sh --build
 
     ./configure \

@@ -41,6 +41,10 @@ ffbuild_depends() {
         echo svtjpegxs
         echo xevd
         echo xeve
+        echo tesseract
+        echo opencolorio
+        echo vapoursynth
+        echo libklvanc
     fi
 }
 

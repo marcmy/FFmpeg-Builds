@@ -13,6 +13,12 @@ ffbuild_enabled() {
 }
 
 ffbuild_dockerbuild() {
+    # OpenColorIO 2.5.2 bundles a yaml-cpp revision whose emitterutils.cpp
+    # uses uint16_t/uint32_t without including <cstdint>. GCC 15 no longer
+    # accepts that accidental transitive include. CXXFLAGS is inherited by
+    # OCIO's CMake ExternalProject builds, so force the standard header there.
+    export CXXFLAGS="${CXXFLAGS:+$CXXFLAGS }-include cstdint"
+
     cmake -G Ninja -S . -B ffbuild-build \
         -DCMAKE_TOOLCHAIN_FILE="$FFBUILD_CMAKE_TOOLCHAIN" \
         -DCMAKE_BUILD_TYPE=Release \

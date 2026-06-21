@@ -22,6 +22,7 @@ ffbuild_dockerbuild() {
         -DBUILD_SHARED_LIBS=OFF \
         -DBUILD_TRAINING_TOOLS=OFF \
         -DBUILD_TESTS=OFF \
+        -DSW_BUILD=OFF \
         -DOPENMP_BUILD=OFF \
         -DGRAPHICS_DISABLED=ON \
         -DENABLE_NATIVE=OFF \

@@ -65,6 +65,10 @@ ffbuild_dockerbuild() {
         echo "OpenColorIO pkg-config file was not installed: $pc"
         return 1
     fi
+
+    # Consumers of the static MinGW library must not mark OCIO symbols as DLL
+    # imports. Propagate the required define through pkg-config to FFmpeg.
+    sed -i 's/^Cflags: /Cflags: -DOpenColorIO_SKIP_IMPORTS /' "$pc"
 }
 
 ffbuild_configure() {

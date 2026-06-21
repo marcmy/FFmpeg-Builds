@@ -14,6 +14,9 @@ on:
         default: false
         required: false
 
+permissions:
+  contents: read
+
 env:
   DOCKER_BUILDKIT: 1
 
@@ -299,6 +302,8 @@ jobs:
     if: ${{ !cancelled() && ( github.event_name == 'schedule' || github.event.inputs.doRelease == 'true' ) && needs.build_ffmpeg.result == 'success' }}
     needs: build_ffmpeg
     runs-on: ubuntu-latest
+    permissions:
+      contents: write
     steps:
       - name: Free Disk-Space
         run: df -h && sudo apt-get clean && docker system prune -a -f && sudo rm -rf /opt/ghc /usr/local/.ghcup /usr/local/lib/android && df -h

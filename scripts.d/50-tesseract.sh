@@ -48,9 +48,11 @@ ffbuild_dockerbuild() {
         return 1
     fi
 
-    # FFmpeg links the static OCR stack into avfilter. Keep the C++ runtime and
-    # Windows socket library in the static pkg-config closure.
-    sed -i 's/^Libs.private:.*/Libs.private: -lstdc++ -lws2_32/' "$pc"
+    # FFmpeg links the static OCR stack into avfilter. Leptonica's CMake install
+    # does not provide lept.pc here, so keep it directly in Tesseract's static
+    # link closure instead of leaving an unsatisfied Requires.private entry.
+    sed -i '/^Requires.private:/d' "$pc"
+    sed -i 's/^Libs.private:.*/Libs.private: -lleptonica -lstdc++ -lws2_32/' "$pc"
 }
 
 ffbuild_configure() {

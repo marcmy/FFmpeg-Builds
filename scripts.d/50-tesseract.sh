@@ -30,6 +30,7 @@ ffbuild_dockerbuild() {
         -DENABLE_CCACHE=OFF \
         -DENABLE_NINJA_POOL=OFF \
         -DDISABLE_TIFF=ON \
+        -DLEPT_TIFF_RESULT=1 \
         -DDISABLE_ARCHIVE=ON \
         -DDISABLE_CURL=ON \
         -DINSTALL_CONFIGS=OFF

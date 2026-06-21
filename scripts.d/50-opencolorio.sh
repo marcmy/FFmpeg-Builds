@@ -13,6 +13,11 @@ ffbuild_enabled() {
 }
 
 ffbuild_dockerbuild() {
+    # MinGW's std::ifstream wchar_t overload accepts a pointer, but GCC 15 no
+    # longer accepts the std::wstring returned by filenameToUTF directly.
+    sed -i 's/Platform::filenameToUTF(filepath), mode))/Platform::filenameToUTF(filepath).c_str(), mode))/' \
+        src/OpenColorIO/transforms/FileTransform.cpp
+
     cmake -G Ninja -S . -B ffbuild-build \
         -DCMAKE_TOOLCHAIN_FILE="$FFBUILD_CMAKE_TOOLCHAIN" \
         -DCMAKE_BUILD_TYPE=Release \

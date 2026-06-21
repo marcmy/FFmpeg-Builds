@@ -14,6 +14,10 @@ ffbuild_enabled() {
 }
 
 ffbuild_dockerbuild() {
+    # Tesseract spells the Windows socket library as Ws2_32. MinGW's linker
+    # searches case-sensitively on Linux, while the import library is lowercase.
+    sed -i 's/set(LIB_Ws2_32 Ws2_32)/set(LIB_Ws2_32 ws2_32)/' CMakeLists.txt
+
     cmake -G Ninja -S . -B ffbuild-build \
         -DCMAKE_TOOLCHAIN_FILE="$FFBUILD_CMAKE_TOOLCHAIN" \
         -DCMAKE_BUILD_TYPE=Release \

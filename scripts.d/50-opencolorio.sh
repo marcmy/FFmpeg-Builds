@@ -60,6 +60,19 @@ ffbuild_dockerbuild() {
     ninja -C ffbuild-build -j$(nproc)
     DESTDIR="$FFBUILD_DESTDIR" ninja -C ffbuild-build install
 
+    # OCIO installs its ExternalProject dependencies only into the private
+    # build-tree prefix. Copy the exact static archives advertised below into
+    # the final dependency prefix so pkg-config consumers can resolve them.
+    local ocio_ext_libdir="ffbuild-build/ext/dist/lib"
+    local ocio_dep
+    for ocio_dep in libpystring.a libyaml-cpp.a libminizip-ng.a libexpat.a; do
+        if [[ ! -f "$ocio_ext_libdir/$ocio_dep" ]]; then
+            echo "OpenColorIO static dependency was not built: $ocio_ext_libdir/$ocio_dep"
+            return 1
+        fi
+        install -m 0644 "$ocio_ext_libdir/$ocio_dep" "$FFBUILD_DESTPREFIX/lib/$ocio_dep"
+    done
+
     local pc="$FFBUILD_DESTPREFIX/lib/pkgconfig/OpenColorIO.pc"
     if [[ ! -f "$pc" ]]; then
         echo "OpenColorIO pkg-config file was not installed: $pc"

@@ -6,7 +6,7 @@ on:
     types:
       - marc-shared-image-updated
   schedule:
-    - cron: "23 * * * *"
+    - cron: "23 */4 * * *"
 
 permissions:
   actions: write

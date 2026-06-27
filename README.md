@@ -2,7 +2,7 @@
 
 This is my opinionated FFmpeg build fork: a Windows x64 shared FFmpeg package meant to be the practical "just give me the all-in-one build" option.
 
-The goal is simple: keep an hourly-updated FFmpeg master build around with as many useful codecs, filters, demuxers, muxers, hardware paths, and helper libraries enabled as is reasonably maintainable. Give or take the occasional upstream breakage, weird dependency, or library that needs extra care.
+The goal is simple: keep an updated FFmpeg master build around with as many useful codecs, filters, demuxers, muxers, hardware paths, and helper libraries enabled as is reasonably maintainable. Give or take the occasional upstream breakage, weird dependency, or library that needs extra care.
 
 This repository is based on BtbN FFmpeg-Builds, but the `marc-shared` variant is tuned for my own Windows use case rather than small download size or a minimal dependency set.
 
@@ -33,7 +33,7 @@ The exact list lives in `scripts.d/` and may change as FFmpeg master and upstrea
 
 ## Release Cadence
 
-The release workflow checks upstream FFmpeg hourly.
+The release workflow checks upstream FFmpeg every 4 hours.
 
 Scheduled runs skip rebuilding when the latest release already contains the current upstream FFmpeg master SHA. Image rebuilds can also trigger a release build directly when the dependency image changes.
 

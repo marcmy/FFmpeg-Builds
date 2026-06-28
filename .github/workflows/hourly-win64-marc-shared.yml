@@ -49,7 +49,7 @@ jobs:
 
       - name: Restore FFmpeg ccache
         id: ffmpeg-ccache
-        uses: actions/cache/restore@v5
+        uses: actions/cache/restore@v6
         with:
           path: .cache/ccache
           key: ffmpeg-ccache-${{ runner.os }}-${{ env.TARGET }}-${{ env.VARIANT }}-${{ github.run_id }}
@@ -268,7 +268,7 @@ jobs:
 
       - name: Save FFmpeg ccache
         if: ${{ always() }}
-        uses: actions/cache/save@v5
+        uses: actions/cache/save@v6
         with:
           path: .cache/ccache
           key: ${{ steps.ffmpeg-ccache.outputs.cache-primary-key }}

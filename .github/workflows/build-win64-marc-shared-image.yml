@@ -81,7 +81,7 @@ jobs:
 
       - name: Restore FFmpeg source download cache
         id: ffmpeg-download-cache
-        uses: actions/cache/restore@v5
+        uses: actions/cache/restore@v6
         with:
           path: .cache/downloads
           key: ffmpeg-download-cache-${{ runner.os }}-${{ env.TARGET }}-${{ env.VARIANT }}-${{ hashFiles('download.sh', 'util/dl_functions.sh', 'variants/**', 'scripts.d/**', 'addins/**') }}
@@ -164,7 +164,7 @@ jobs:
 
       - name: Save FFmpeg source download cache
         if: ${{ always() && steps.ffmpeg-download-cache.outputs.cache-hit != 'true' }}
-        uses: actions/cache/save@v5
+        uses: actions/cache/save@v6
         with:
           path: .cache/downloads
           key: ffmpeg-download-cache-${{ runner.os }}-${{ env.TARGET }}-${{ env.VARIANT }}-${{ hashFiles('download.sh', 'util/dl_functions.sh', 'variants/**', 'scripts.d/**', 'addins/**') }}

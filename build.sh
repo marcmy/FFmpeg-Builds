@@ -54,6 +54,11 @@ fi
 git clone --filter=blob:none --branch='__GIT_BRANCH__' '__FFMPEG_REPO__' ffmpeg
 cd ffmpeg
 
+# FFmpeg master removed this configure switch while existing dependency images
+# may still inject it. Shaderc remains available to Vulkan consumers through
+# the packaged dependency; only the obsolete FFmpeg configure flag is dropped.
+FF_CONFIGURE="${FF_CONFIGURE//--enable-libshaderc/}"
+
 ./configure --prefix=/ffbuild/prefix --pkg-config-flags="--static" $FFBUILD_TARGET_FLAGS $FF_CONFIGURE \
     --extra-cflags="$FF_CFLAGS" --extra-cxxflags="$FF_CXXFLAGS" --extra-libs="$FF_LIBS" \
     --extra-ldflags="$FF_LDFLAGS" --extra-ldexeflags="$FF_LDEXEFLAGS" \

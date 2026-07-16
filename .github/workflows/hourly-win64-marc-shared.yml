@@ -166,6 +166,67 @@ jobs:
 
             docker tag "$image_ref" "${TARGET_REPO}/win64-marc-shared:latest"
 
+            retry_command() {
+              local max_attempts="$1"
+              shift
+              local attempt=1
+              local delay=10
+              local status=1
+
+              while (( attempt <= max_attempts )); do
+                if "$@"; then
+                  return 0
+                else
+                  status=$?
+                fi
+
+                if (( attempt == max_attempts )); then
+                  echo "Command failed after ${attempt} attempts (exit ${status}): $*" >&2
+                  return "$status"
+                fi
+
+                echo "::warning::Command failed (attempt ${attempt}/${max_attempts}, exit ${status}); retrying in ${delay}s: $*"
+                sleep "$delay"
+                attempt=$((attempt + 1))
+                delay=$((delay * 2))
+              done
+            }
+
+            ensure_draft_release() {
+              local max_attempts=5
+              local attempt=1
+              local delay=10
+              local status=1
+
+              while (( attempt <= max_attempts )); do
+                if gh release view "$release_tag" --repo "$GITHUB_REPOSITORY" >/dev/null 2>&1; then
+                  echo "Release ${release_tag} already exists; continuing with asset upload."
+                  return 0
+                fi
+
+                echo "Creating draft release ${release_tag} (attempt ${attempt}/${max_attempts})."
+                if gh release create "$release_tag" \
+                  --repo "$GITHUB_REPOSITORY" \
+                  --title "FFmpeg win64 Marc Shared ${package_version}" \
+                  --notes-file release/release-notes.md \
+                  --draft; then
+                  return 0
+                else
+                  status=$?
+                fi
+
+                if (( attempt == max_attempts )); then
+                  echo "Unable to create draft release ${release_tag} after ${attempt} attempts." >&2
+                  return "$status"
+                fi
+
+                echo "::warning::Draft release creation failed (attempt ${attempt}/${max_attempts}, exit ${status}); retrying in ${delay}s."
+                sleep "$delay"
+                attempt=$((attempt + 1))
+                delay=$((delay * 2))
+              done
+            }
+
             cleanup_old_releases() {
               local keep="${MARC_SHARED_RELEASES_TO_KEEP:-5}"
               local index=0
@@ -203,14 +264,19 @@ jobs:
 
             write_release_notes pending
 
-            gh release create "$release_tag" \
+            ensure_draft_release
+            release_created=1
+
+            retry_command 5 gh release upload "$release_tag" \
               "release/${zip_name}" \
               "release/checksums.sha256" \
               --repo "$GITHUB_REPOSITORY" \
-              --title "FFmpeg win64 Marc Shared ${package_version}" \
-              --notes-file release/release-notes.md \
+              --clobber
+
+            retry_command 5 gh release edit "$release_tag" \
+              --repo "$GITHUB_REPOSITORY" \
+              --draft=false \
               --latest
-            release_created=1
 
             if [[ -z "${SCOOP_BUCKET_TOKEN:-}" ]]; then
               echo "SCOOP_BUCKET_TOKEN is not set; skipping scoop manifest update."
@@ -245,7 +311,7 @@ jobs:
             cd ..
             release_safe_to_keep=1
             write_release_notes yes
-            gh release edit "$release_tag" \
+            retry_command 5 gh release edit "$release_tag" \
               --repo "$GITHUB_REPOSITORY" \
               --notes-file release/release-notes.md \
               --latest

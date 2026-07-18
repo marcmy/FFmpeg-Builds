@@ -38,10 +38,9 @@ def main() -> int:
     data["architecture"]["64bit"]["url"] = zip_url
     data["architecture"]["64bit"]["hash"] = zip_hash
     data["checkver"] = {
+        "url": "https://api.github.com/repos/marcmy/FFmpeg-Builds/releases?per_page=50",
         "script": [
-            "$ErrorActionPreference='Stop'",
-            "$headers=@{ 'User-Agent'='Scoop-Checkver'; 'Accept'='application/vnd.github+json'; 'X-GitHub-Api-Version'='2022-11-28' }",
-            "$releases=Invoke-RestMethod -Headers $headers -Uri 'https://api.github.com/repos/marcmy/FFmpeg-Builds/releases?per_page=50'",
+            "$releases=$page | ConvertFrom-Json",
             "$release=$releases | Where-Object { $_.tag_name -match '^ffmpeg-[0-9]{8}\\.[0-9]{6}-win64-marc-shared$' } | Select-Object -First 1",
             "if ($null -eq $release) { 'ffmpeg-00000000.000000-win64-marc-shared' } else { $release.tag_name }",
         ],

@@ -37,6 +37,7 @@ concurrency:
 jobs:
   build-image:
     runs-on: ubuntu-latest
+    timeout-minutes: 360
 
     steps:
       - name: Free disk space
@@ -48,9 +49,10 @@ jobs:
           df -h
 
       - name: Checkout
-        uses: actions/checkout@v7
+        uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7
         with:
           fetch-depth: 0
+          persist-credentials: false
 
       - name: Resolve image input revision
         id: image-revision
@@ -81,7 +83,7 @@ jobs:
 
       - name: Restore FFmpeg source download cache
         id: ffmpeg-download-cache
-        uses: actions/cache/restore@v6
+        uses: actions/cache/restore@55cc8345863c7cc4c66a329aec7e433d2d1c52a9 # v6
         with:
           path: .cache/downloads
           key: ffmpeg-download-cache-${{ runner.os }}-${{ env.TARGET }}-${{ env.VARIANT }}-${{ hashFiles('download.sh', 'util/dl_functions.sh', 'variants/**', 'scripts.d/**', 'addins/**') }}
@@ -89,12 +91,12 @@ jobs:
             ffmpeg-download-cache-${{ runner.os }}-${{ env.TARGET }}-${{ env.VARIANT }}-
 
       - name: Set up Docker Buildx
-        uses: docker/setup-buildx-action@v4
+        uses: docker/setup-buildx-action@d7f5e7f509e45cec5c76c4d5afdd7de93d0b3df5 # v4.1.0
         with:
           buildkitd-config: .github/buildkit.toml
 
       - name: Login to GHCR
-        uses: docker/login-action@v4
+        uses: docker/login-action@4907a6ddec9925e35a0a9e82d7399ccc52663121 # v4.1.0
         with:
           registry: ghcr.io
           username: ${{ github.actor }}
@@ -155,7 +157,7 @@ jobs:
 
       - name: Upload Marc Shared image build log
         if: ${{ always() }}
-        uses: actions/upload-artifact@main
+        uses: actions/upload-artifact@043fb46d1a93c77aae656e7c1c64a875d1fc6a0a # v7.0.1
         with:
           name: marc-shared-image-build-log-${{ github.run_id }}-${{ github.run_attempt }}
           path: logs/build-win64-marc-shared-image.log
@@ -164,7 +166,7 @@ jobs:
 
       - name: Save FFmpeg source download cache
         if: ${{ always() && steps.ffmpeg-download-cache.outputs.cache-hit != 'true' }}
-        uses: actions/cache/save@v6
+        uses: actions/cache/save@55cc8345863c7cc4c66a329aec7e433d2d1c52a9 # v6
         with:
           path: .cache/downloads
           key: ffmpeg-download-cache-${{ runner.os }}-${{ env.TARGET }}-${{ env.VARIANT }}-${{ hashFiles('download.sh', 'util/dl_functions.sh', 'variants/**', 'scripts.d/**', 'addins/**') }}

@@ -33,6 +33,7 @@ jobs:
   build:
     runs-on: ubuntu-latest
     environment: scoop-bucket
+    timeout-minutes: 360
 
     steps:
       - name: Free disk space
@@ -44,13 +45,14 @@ jobs:
           df -h
 
       - name: Checkout
-        uses: actions/checkout@v7
+        uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7
         with:
           fetch-depth: 0
+          persist-credentials: false
 
       - name: Restore FFmpeg ccache
         id: ffmpeg-ccache
-        uses: actions/cache/restore@v6
+        uses: actions/cache/restore@55cc8345863c7cc4c66a329aec7e433d2d1c52a9 # v6
         with:
           path: .cache/ccache
           key: ffmpeg-ccache-${{ runner.os }}-${{ env.TARGET }}-${{ env.VARIANT }}-${{ github.run_id }}
@@ -58,7 +60,7 @@ jobs:
             ffmpeg-ccache-${{ runner.os }}-${{ env.TARGET }}-${{ env.VARIANT }}-
 
       - name: Login to GHCR
-        uses: docker/login-action@v4
+        uses: docker/login-action@4907a6ddec9925e35a0a9e82d7399ccc52663121 # v4.1.0
         with:
           registry: ghcr.io
           username: ${{ github.actor }}
@@ -324,7 +326,7 @@ jobs:
 
       - name: Upload Marc Shared release build log
         if: ${{ always() }}
-        uses: actions/upload-artifact@main
+        uses: actions/upload-artifact@043fb46d1a93c77aae656e7c1c64a875d1fc6a0a # v7.0.1
         with:
           name: marc-shared-release-build-log-${{ github.run_id }}-${{ github.run_attempt }}
           path: |
@@ -335,7 +337,7 @@ jobs:
 
       - name: Save FFmpeg ccache
         if: ${{ always() }}
-        uses: actions/cache/save@v6
+        uses: actions/cache/save@55cc8345863c7cc4c66a329aec7e433d2d1c52a9 # v6
         with:
           path: .cache/ccache
           key: ${{ steps.ffmpeg-ccache.outputs.cache-primary-key }}

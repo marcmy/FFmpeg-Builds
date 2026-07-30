@@ -1,0 +1,166 @@
+name: Smoke-test Marc Shared release archive
+
+on:
+  workflow_dispatch:
+    inputs:
+      tag:
+        description: Release tag to test, or latest
+        required: false
+        default: latest
+        type: string
+  release:
+    types:
+      - published
+  pull_request:
+    paths:
+      - .github/workflows/smoke-test-marc-shared-release.yml
+
+permissions:
+  contents: read
+
+concurrency:
+  group: smoke-test-marc-shared-release-${{ github.event.release.tag_name || github.event.inputs.tag || github.ref }}
+  cancel-in-progress: true
+
+jobs:
+  smoke-test:
+    name: Validate published Windows archive
+    runs-on: windows-2025
+    timeout-minutes: 20
+
+    steps:
+      - name: Resolve release tag
+        id: release
+        shell: pwsh
+        env:
+          GH_TOKEN: ${{ github.token }}
+          REQUESTED_TAG: ${{ github.event.inputs.tag }}
+        run: |
+          $ErrorActionPreference = 'Stop'
+
+          if ($env:GITHUB_EVENT_NAME -eq 'release') {
+            $event = Get-Content -Raw -LiteralPath $env:GITHUB_EVENT_PATH | ConvertFrom-Json
+            $tag = $event.release.tag_name
+          }
+          elseif ($env:REQUESTED_TAG -and $env:REQUESTED_TAG -ne 'latest') {
+            $tag = $env:REQUESTED_TAG
+          }
+          else {
+            $tag = gh release view --repo $env:GITHUB_REPOSITORY --json tagName --jq '.tagName'
+            if ($LASTEXITCODE -ne 0) {
+              throw 'Unable to resolve the latest release tag.'
+            }
+          }
+
+          if (-not $tag) {
+            throw 'Resolved release tag is empty.'
+          }
+
+          "Testing release tag: $tag"
+          "tag=$tag" >> $env:GITHUB_OUTPUT
+
+      - name: Download release archive
+        shell: pwsh
+        env:
+          GH_TOKEN: ${{ github.token }}
+          RELEASE_TAG: ${{ steps.release.outputs.tag }}
+        run: |
+          $ErrorActionPreference = 'Stop'
+          New-Item -ItemType Directory -Force -Path release-download | Out-Null
+
+          gh release download $env:RELEASE_TAG `
+            --repo $env:GITHUB_REPOSITORY `
+            --pattern '*-win64-marc-shared.zip' `
+            --dir release-download `
+            --clobber
+
+          if ($LASTEXITCODE -ne 0) {
+            throw "Unable to download the Marc Shared archive from $env:RELEASE_TAG."
+          }
+
+          $archives = @(Get-ChildItem -LiteralPath release-download -File -Filter '*.zip')
+          if ($archives.Count -ne 1) {
+            throw "Expected exactly one Marc Shared ZIP, found $($archives.Count)."
+          }
+
+          "Downloaded archive: $($archives[0].Name)"
+          Get-FileHash -Algorithm SHA256 -LiteralPath $archives[0].FullName | Format-List
+
+      - name: Extract and validate archive contents
+        id: archive
+        shell: pwsh
+        run: |
+          $ErrorActionPreference = 'Stop'
+          $archive = Get-ChildItem -LiteralPath release-download -File -Filter '*.zip' | Select-Object -First 1
+          $extractPath = Join-Path $env:RUNNER_TEMP 'ffmpeg-marc-shared'
+          Expand-Archive -LiteralPath $archive.FullName -DestinationPath $extractPath -Force
+
+          $ffmpeg = Get-ChildItem -LiteralPath $extractPath -Recurse -File -Filter 'ffmpeg.exe' | Select-Object -First 1
+          $ffprobe = Get-ChildItem -LiteralPath $extractPath -Recurse -File -Filter 'ffprobe.exe' | Select-Object -First 1
+
+          if (-not $ffmpeg) {
+            throw 'ffmpeg.exe is missing from the published archive.'
+          }
+          if (-not $ffprobe) {
+            throw 'ffprobe.exe is missing from the published archive.'
+          }
+          if ($ffmpeg.DirectoryName -ne $ffprobe.DirectoryName) {
+            throw 'ffmpeg.exe and ffprobe.exe are not packaged in the same directory.'
+          }
+
+          "ffmpeg=$($ffmpeg.FullName)" >> $env:GITHUB_OUTPUT
+          "ffprobe=$($ffprobe.FullName)" >> $env:GITHUB_OUTPUT
+          "Executable directory: $($ffmpeg.DirectoryName)"
+
+      - name: Run FFmpeg and FFprobe smoke tests
+        shell: pwsh
+        env:
+          FFMPEG_PATH: ${{ steps.archive.outputs.ffmpeg }}
+          FFPROBE_PATH: ${{ steps.archive.outputs.ffprobe }}
+        run: |
+          $ErrorActionPreference = 'Stop'
+          $sample = Join-Path $env:RUNNER_TEMP 'ffmpeg-smoke.png'
+
+          & $env:FFMPEG_PATH -hide_banner -version
+          if ($LASTEXITCODE -ne 0) {
+            throw "ffmpeg -version failed with exit code $LASTEXITCODE."
+          }
+
+          & $env:FFPROBE_PATH -hide_banner -version
+          if ($LASTEXITCODE -ne 0) {
+            throw "ffprobe -version failed with exit code $LASTEXITCODE."
+          }
+
+          & $env:FFMPEG_PATH `
+            -hide_banner `
+            -loglevel error `
+            -f lavfi `
+            -i 'testsrc=size=128x72:rate=1' `
+            -frames:v 1 `
+            -y `
+            $sample
+          if ($LASTEXITCODE -ne 0 -or -not (Test-Path -LiteralPath $sample)) {
+            throw "FFmpeg failed to generate the smoke-test image (exit $LASTEXITCODE)."
+          }
+
+          $probeOutput = & $env:FFPROBE_PATH `
+            -hide_banner `
+            -loglevel error `
+            -select_streams 'v:0' `
+            -show_entries 'stream=codec_name,width,height' `
+            -of json `
+            $sample
+          if ($LASTEXITCODE -ne 0) {
+            throw "FFprobe failed to inspect the smoke-test image (exit $LASTEXITCODE)."
+          }
+
+          $probe = $probeOutput | ConvertFrom-Json
+          $stream = $probe.streams | Select-Object -First 1
+          if (-not $stream) {
+            throw 'FFprobe returned no video stream for the generated image.'
+          }
+          if ($stream.codec_name -ne 'png' -or $stream.width -ne 128 -or $stream.height -ne 72) {
+            throw "Unexpected FFprobe result: $($probeOutput -join [Environment]::NewLine)"
+          }
+
+          "Smoke test passed: generated and probed a 128x72 PNG with the published binaries."

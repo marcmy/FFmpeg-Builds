@@ -178,7 +178,7 @@ jobs:
 
       - name: Trigger Marc Shared FFmpeg release
         env:
-          GH_TOKEN: ${{ github.token }}
+          GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
           IMAGE_INPUT_SHA: ${{ steps.image-revision.outputs.sha }}
         run: |
           jq -n --arg image_input_sha "$IMAGE_INPUT_SHA" \

@@ -55,9 +55,9 @@ jq -n \
     --arg ffmpeg_repo "${UPSTREAM_REPO:-https://github.com/FFmpeg/FFmpeg.git}" \
     --arg ffmpeg_sha "$FFMPEG_SHA" \
     --arg builder_repo "${GITHUB_REPOSITORY:-marcmy/FFmpeg-Builds}" \
-    --arg builder_sha "${GITHUB_SHA:-unknown}" \
-    --arg run_id "${GITHUB_RUN_ID:-unknown}" \
-    --arg run_attempt "${GITHUB_RUN_ATTEMPT:-unknown}" \
+    --arg builder_sha "${BUILDER_SHA:-${GITHUB_SHA:-unknown}}" \
+    --arg metadata_run_id "${GITHUB_RUN_ID:-unknown}" \
+    --arg metadata_run_attempt "${GITHUB_RUN_ATTEMPT:-unknown}" \
     --arg created_utc "$(date -u +'%Y-%m-%dT%H:%M:%SZ')" \
     --arg image_input_sha "$IMAGE_INPUT_SHA" \
     --arg image_ref "$IMAGE_REF" \
@@ -93,9 +93,7 @@ jq -n \
         },
         builder: {
           repository: $builder_repo,
-          commit: $builder_sha,
-          github_run_id: $run_id,
-          github_run_attempt: $run_attempt
+          commit: $builder_sha
         }
       },
       dependency_image: {
@@ -126,6 +124,12 @@ jq -n \
           nv_codec_headers_branch: $nv_codec_headers_branch,
           nv_codec_headers_commit: $nv_codec_headers_commit,
           minimum_nvidia_driver: $nvidia_min_driver
+        }
+      },
+      provenance: {
+        metadata_generator: {
+          github_run_id: $metadata_run_id,
+          github_run_attempt: $metadata_run_attempt
         }
       }
     }' > "$BUILDINFO_PATH"

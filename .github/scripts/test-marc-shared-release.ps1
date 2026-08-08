@@ -129,7 +129,7 @@ function Get-FfmpegFeatures {
 
 function Write-FeatureText {
     param(
-        [hashtable]$Features,
+        [System.Collections.IDictionary]$Features,
         [string]$Path
     )
 
@@ -146,7 +146,7 @@ function Write-FeatureText {
 
 function Assert-RequiredFeatures {
     param(
-        [hashtable]$Features,
+        [System.Collections.IDictionary]$Features,
         [string]$RequiredPath
     )
 
@@ -156,7 +156,7 @@ function Assert-RequiredFeatures {
     foreach ($property in $required.PSObject.Properties) {
         $category = $property.Name
         if (-not $Features.Contains($category)) {
-            $missing.Add("$category:<category missing>")
+            $missing.Add("${category}:<category missing>")
             continue
         }
 
@@ -167,7 +167,7 @@ function Assert-RequiredFeatures {
 
         foreach ($name in @($property.Value)) {
             if (-not $available.Contains([string]$name)) {
-                $missing.Add("$category:$name")
+                $missing.Add("${category}:$name")
             }
         }
     }
@@ -179,8 +179,8 @@ function Assert-RequiredFeatures {
 
 function Write-FeatureDiff {
     param(
-        [hashtable]$Current,
-        [hashtable]$Previous,
+        [System.Collections.IDictionary]$Current,
+        [System.Collections.IDictionary]$Previous,
         [string]$Path
     )
 

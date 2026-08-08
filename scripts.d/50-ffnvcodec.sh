@@ -24,12 +24,21 @@ ffbuild_dockerdl() {
 }
 
 ffbuild_dockerbuild() {
-    # Marc's rolling Windows build intentionally targets NVENC API 13.0 so it
-    # remains usable with NVIDIA R590 drivers (for example 596.49). Current
-    # FFmpeg master gates 13.1-only features at compile time, so using the 13.0
-    # headers keeps NVENC enabled while only omitting features that require 13.1.
     if [[ $TARGET == win64 && $VARIANT == marc-shared ]]; then
-        cd ffnvcodec2
+        case "${MARC_NVENC_API:-}" in
+        13.0)
+            if [[ "${MARC_NV_CODEC_HEADERS_COMMIT:-}" != "$SCRIPT_COMMIT2" || \
+                  "${MARC_NV_CODEC_HEADERS_BRANCH:-}" != "$SCRIPT_BRANCH2" ]]; then
+                echo "Marc Shared NVENC policy does not match the pinned SDK 13.0 headers." >&2
+                return 1
+            fi
+            cd ffnvcodec2
+            ;;
+        *)
+            echo "Unsupported or missing Marc Shared NVENC API policy: ${MARC_NVENC_API:-<unset>}" >&2
+            return 1
+            ;;
+        esac
     elif (( $FFVER < 800 )); then
         cd ffnvcodec3
     elif (( $FFVER <= 801 )); then

@@ -4,6 +4,11 @@ shopt -s globstar
 cd "$(dirname "$0")"
 source util/vars.sh
 
+POLICY_FILE="variants/${TARGET}-${VARIANT}.policy.sh"
+if [[ -f "$POLICY_FILE" ]]; then
+    source "$POLICY_FILE"
+fi
+
 export LC_ALL=C.UTF-8
 
 rm -f Dockerfile Dockerfile.{dl,final,dl.final}
@@ -136,6 +141,9 @@ export TODF="Dockerfile"
 BASELAYER="base-layer"
 to_df "FROM ${REGISTRY}/${REPO}/base-${TARGET}:latest AS ${BASELAYER}"
 to_df "ENV TARGET=$TARGET VARIANT=$VARIANT REPO=$REPO ADDINS_STR=$ADDINS_STR FFVER=$(ffbuild_ffver)"
+if [[ -n "${MARC_NVENC_API:-}" ]]; then
+    to_df "ENV MARC_NVENC_API=$MARC_NVENC_API MARC_NV_CODEC_HEADERS_BRANCH=$MARC_NV_CODEC_HEADERS_BRANCH MARC_NV_CODEC_HEADERS_COMMIT=$MARC_NV_CODEC_HEADERS_COMMIT MARC_NVIDIA_MIN_DRIVER=$MARC_NVIDIA_MIN_DRIVER"
+fi
 to_df "COPY --link util/run_stage.sh /usr/bin/run_stage"
 
 for addin in "${ADDINS[@]}"; do

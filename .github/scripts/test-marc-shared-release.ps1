@@ -101,9 +101,11 @@ function Get-FfmpegFeatures {
         -Lines (Get-CommandOutput -Executable $Executable -Arguments @('-hide_banner', '-decoders')) `
         -Pattern '^\s*[VAS]\S{5}\s+(\S+)'
 
+    # FFmpeg 8.1/master prints two filter capability columns (T/S), while
+    # older versions can print a third command-support column (C).
     $filters = Get-FlaggedNames `
         -Lines (Get-CommandOutput -Executable $Executable -Arguments @('-hide_banner', '-filters')) `
-        -Pattern '^\s*[TSC\.]{3}\s+(\S+)'
+        -Pattern '^\s*[TSC\.]{2,3}\s+(\S+)'
 
     $formats = Get-FlaggedNames `
         -Lines (Get-CommandOutput -Executable $Executable -Arguments @('-hide_banner', '-formats')) `

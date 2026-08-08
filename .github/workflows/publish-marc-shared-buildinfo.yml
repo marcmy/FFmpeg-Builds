@@ -11,9 +11,16 @@ on:
         required: false
         default: latest
         type: string
+  pull_request:
+    paths:
+      - .github/workflows/publish-marc-shared-buildinfo.yml
+      - .github/scripts/create-marc-shared-buildinfo.sh
+      - variants/win64-marc-shared.policy.sh
+      - generate.sh
+      - scripts.d/50-ffnvcodec.sh
 
 permissions:
-  contents: write
+  contents: read
   packages: read
 
 concurrency:
@@ -25,6 +32,8 @@ jobs:
     name: Generate buildinfo.json
     runs-on: ubuntu-24.04
     timeout-minutes: 20
+    outputs:
+      release_tag: ${{ steps.release.outputs.tag }}
 
     steps:
       - name: Resolve release provenance
@@ -79,7 +88,14 @@ jobs:
           echo "Dependency image input SHA: $image_input_sha"
           echo "Dependency image: $image_ref"
 
+      - name: Check out pull-request validation revision
+        if: ${{ github.event_name == 'pull_request' }}
+        uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7
+        with:
+          persist-credentials: false
+
       - name: Check out exact builder revision
+        if: ${{ github.event_name != 'pull_request' }}
         uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7
         with:
           ref: ${{ steps.release.outputs.builder_sha }}
@@ -138,17 +154,6 @@ jobs:
           set -euo pipefail
           bash .github/scripts/create-marc-shared-buildinfo.sh
 
-      - name: Upload buildinfo.json to release
-        env:
-          GH_TOKEN: ${{ github.token }}
-          RELEASE_TAG: ${{ steps.release.outputs.tag }}
-        run: |
-          set -euo pipefail
-          gh release upload "$RELEASE_TAG" \
-            release-metadata/buildinfo.json \
-            --repo "$GITHUB_REPOSITORY" \
-            --clobber
-
       - name: Upload build metadata artifact
         uses: actions/upload-artifact@043fb46d1a93c77aae656e7c1c64a875d1fc6a0a # v7.0.1
         with:
@@ -156,3 +161,37 @@ jobs:
           path: release-metadata/buildinfo.json
           if-no-files-found: error
           retention-days: 30
+
+  publish-buildinfo:
+    name: Attach buildinfo.json to release
+    if: ${{ github.event_name != 'pull_request' }}
+    needs: buildinfo
+    runs-on: ubuntu-24.04
+    timeout-minutes: 10
+    permissions:
+      actions: read
+      contents: write
+
+    steps:
+      - name: Download build metadata from this run
+        env:
+          GH_TOKEN: ${{ github.token }}
+          RELEASE_TAG: ${{ needs.buildinfo.outputs.release_tag }}
+        run: |
+          set -euo pipefail
+          mkdir -p release-metadata
+          gh run download "$GITHUB_RUN_ID" \
+            --repo "$GITHUB_REPOSITORY" \
+            --name "marc-shared-buildinfo-${RELEASE_TAG}" \
+            --dir release-metadata
+
+      - name: Upload buildinfo.json to release
+        env:
+          GH_TOKEN: ${{ github.token }}
+          RELEASE_TAG: ${{ needs.buildinfo.outputs.release_tag }}
+        run: |
+          set -euo pipefail
+          gh release upload "$RELEASE_TAG" \
+            release-metadata/buildinfo.json \
+            --repo "$GITHUB_REPOSITORY" \
+            --clobber

@@ -1,11 +1,9 @@
 name: Test Full Build
+
+# Intentionally manual-only. The full matrix is too large to run on every PR
+# and can starve smaller validation workflows waiting for hosted runners.
 on:
-  pull_request:
-    branches:
-      - master
-    paths-ignore:
-      - '**.md'
-      - 'LICENSE'
+  workflow_dispatch:
 
 permissions:
   contents: read

@@ -14,6 +14,8 @@ on:
   pull_request:
     paths:
       - .github/workflows/smoke-test-marc-shared-release.yml
+      - .github/scripts/test-marc-shared-release.ps1
+      - .github/marc-shared-required-features.json
 
 permissions:
   contents: read
@@ -26,9 +28,16 @@ jobs:
   smoke-test:
     name: Validate published Windows archive
     runs-on: windows-2025
-    timeout-minutes: 20
+    timeout-minutes: 30
+    outputs:
+      release_tag: ${{ steps.release.outputs.tag }}
 
     steps:
+      - name: Check out validation scripts
+        uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7
+        with:
+          persist-credentials: false
+
       - name: Resolve release tag
         id: release
         shell: pwsh
@@ -59,7 +68,8 @@ jobs:
           "Testing release tag: $tag"
           "tag=$tag" >> $env:GITHUB_OUTPUT
 
-      - name: Download release archive
+      - name: Download current and previous release archives
+        id: releases
         shell: pwsh
         env:
           GH_TOKEN: ${{ github.token }}
@@ -83,20 +93,45 @@ jobs:
             throw "Expected exactly one Marc Shared ZIP, found $($archives.Count)."
           }
 
-          "Downloaded archive: $($archives[0].Name)"
+          "Downloaded current archive: $($archives[0].Name)"
           Get-FileHash -Algorithm SHA256 -LiteralPath $archives[0].FullName | Format-List
 
-      - name: Extract and validate archive contents
+          $releaseTags = @(gh api --paginate "repos/$env:GITHUB_REPOSITORY/releases?per_page=100" `
+            --jq '.[] | select(.tag_name | test("^ffmpeg-[0-9]{8}\\.[0-9]{6}-win64-marc-shared$")) | .tag_name')
+          if ($LASTEXITCODE -ne 0) {
+            throw 'Unable to enumerate Marc Shared releases.'
+          }
+
+          $previousTag = $releaseTags | Where-Object { $_ -ne $env:RELEASE_TAG } | Select-Object -First 1
+          if ($previousTag) {
+            New-Item -ItemType Directory -Force -Path previous-download | Out-Null
+            gh release download $previousTag `
+              --repo $env:GITHUB_REPOSITORY `
+              --pattern '*-win64-marc-shared.zip' `
+              --dir previous-download `
+              --clobber
+            if ($LASTEXITCODE -ne 0) {
+              throw "Unable to download previous Marc Shared release $previousTag."
+            }
+            "Previous release for feature comparison: $previousTag"
+            "previous_tag=$previousTag" >> $env:GITHUB_OUTPUT
+          }
+          else {
+            'No previous Marc Shared release found; feature diff will be skipped.'
+            "previous_tag=" >> $env:GITHUB_OUTPUT
+          }
+
+      - name: Extract release archives
         id: archive
         shell: pwsh
         run: |
           $ErrorActionPreference = 'Stop'
-          $archive = Get-ChildItem -LiteralPath release-download -File -Filter '*.zip' | Select-Object -First 1
-          $extractPath = Join-Path $env:RUNNER_TEMP 'ffmpeg-marc-shared'
-          Expand-Archive -LiteralPath $archive.FullName -DestinationPath $extractPath -Force
+          $currentArchive = Get-ChildItem -LiteralPath release-download -File -Filter '*.zip' | Select-Object -First 1
+          $currentExtract = Join-Path $env:RUNNER_TEMP 'ffmpeg-marc-shared-current'
+          Expand-Archive -LiteralPath $currentArchive.FullName -DestinationPath $currentExtract -Force
 
-          $ffmpeg = Get-ChildItem -LiteralPath $extractPath -Recurse -File -Filter 'ffmpeg.exe' | Select-Object -First 1
-          $ffprobe = Get-ChildItem -LiteralPath $extractPath -Recurse -File -Filter 'ffprobe.exe' | Select-Object -First 1
+          $ffmpeg = Get-ChildItem -LiteralPath $currentExtract -Recurse -File -Filter 'ffmpeg.exe' | Select-Object -First 1
+          $ffprobe = Get-ChildItem -LiteralPath $currentExtract -Recurse -File -Filter 'ffprobe.exe' | Select-Object -First 1
 
           if (-not $ffmpeg) {
             throw 'ffmpeg.exe is missing from the published archive.'
@@ -112,55 +147,130 @@ jobs:
           "ffprobe=$($ffprobe.FullName)" >> $env:GITHUB_OUTPUT
           "Executable directory: $($ffmpeg.DirectoryName)"
 
-      - name: Run FFmpeg and FFprobe smoke tests
+          $previousArchive = Get-ChildItem -LiteralPath previous-download -File -Filter '*.zip' -ErrorAction SilentlyContinue | Select-Object -First 1
+          if ($previousArchive) {
+            $previousExtract = Join-Path $env:RUNNER_TEMP 'ffmpeg-marc-shared-previous'
+            Expand-Archive -LiteralPath $previousArchive.FullName -DestinationPath $previousExtract -Force
+            $previousFfmpeg = Get-ChildItem -LiteralPath $previousExtract -Recurse -File -Filter 'ffmpeg.exe' | Select-Object -First 1
+            if (-not $previousFfmpeg) {
+              throw 'ffmpeg.exe is missing from the previous release archive.'
+            }
+            "previous_ffmpeg=$($previousFfmpeg.FullName)" >> $env:GITHUB_OUTPUT
+          }
+          else {
+            "previous_ffmpeg=" >> $env:GITHUB_OUTPUT
+          }
+
+      - name: Run codec smoke tests and feature regression checks
         shell: pwsh
         env:
           FFMPEG_PATH: ${{ steps.archive.outputs.ffmpeg }}
           FFPROBE_PATH: ${{ steps.archive.outputs.ffprobe }}
+          PREVIOUS_FFMPEG_PATH: ${{ steps.archive.outputs.previous_ffmpeg }}
         run: |
           $ErrorActionPreference = 'Stop'
-          $sample = Join-Path $env:RUNNER_TEMP 'ffmpeg-smoke.png'
+          New-Item -ItemType Directory -Force -Path validation-metadata | Out-Null
 
-          & $env:FFMPEG_PATH -hide_banner -version
-          if ($LASTEXITCODE -ne 0) {
-            throw "ffmpeg -version failed with exit code $LASTEXITCODE."
+          $params = @{
+            FfmpegPath = $env:FFMPEG_PATH
+            FfprobePath = $env:FFPROBE_PATH
+            WorkDir = (Join-Path $env:RUNNER_TEMP 'ffmpeg-marc-shared-smoke')
+            RequiredFeaturesPath = '.github/marc-shared-required-features.json'
+            FeatureJsonPath = 'validation-metadata/features.json'
+            FeatureTextPath = 'validation-metadata/features.txt'
+            FeatureDiffPath = 'validation-metadata/feature-diff.txt'
+          }
+          if ($env:PREVIOUS_FFMPEG_PATH) {
+            $params.PreviousFfmpegPath = $env:PREVIOUS_FFMPEG_PATH
           }
 
-          & $env:FFPROBE_PATH -hide_banner -version
-          if ($LASTEXITCODE -ne 0) {
-            throw "ffprobe -version failed with exit code $LASTEXITCODE."
-          }
+          & .github/scripts/test-marc-shared-release.ps1 @params
 
-          & $env:FFMPEG_PATH `
-            -hide_banner `
-            -loglevel error `
-            -f lavfi `
-            -i 'testsrc=size=128x72:rate=1' `
-            -frames:v 1 `
-            -y `
-            $sample
-          if ($LASTEXITCODE -ne 0 -or -not (Test-Path -LiteralPath $sample)) {
-            throw "FFmpeg failed to generate the smoke-test image (exit $LASTEXITCODE)."
-          }
+      - name: Upload validation metadata
+        uses: actions/upload-artifact@043fb46d1a93c77aae656e7c1c64a875d1fc6a0a # v7.0.1
+        with:
+          name: marc-shared-release-validation
+          path: validation-metadata/
+          if-no-files-found: error
+          retention-days: 30
 
-          $probeOutput = & $env:FFPROBE_PATH `
-            -hide_banner `
-            -loglevel error `
-            -select_streams 'v:0' `
-            -show_entries 'stream=codec_name,width,height' `
-            -of json `
-            $sample
-          if ($LASTEXITCODE -ne 0) {
-            throw "FFprobe failed to inspect the smoke-test image (exit $LASTEXITCODE)."
-          }
+  publish-validation-metadata:
+    name: Attach feature manifests to release
+    if: ${{ github.event_name != 'pull_request' }}
+    needs: smoke-test
+    runs-on: ubuntu-24.04
+    timeout-minutes: 10
+    permissions:
+      actions: read
+      contents: write
 
-          $probe = $probeOutput | ConvertFrom-Json
-          $stream = $probe.streams | Select-Object -First 1
-          if (-not $stream) {
-            throw 'FFprobe returned no video stream for the generated image.'
-          }
-          if ($stream.codec_name -ne 'png' -or $stream.width -ne 128 -or $stream.height -ne 72) {
-            throw "Unexpected FFprobe result: $($probeOutput -join [Environment]::NewLine)"
-          }
+    steps:
+      - name: Download validation metadata from this run
+        env:
+          GH_TOKEN: ${{ github.token }}
+        run: |
+          set -euo pipefail
+          mkdir -p validation-metadata
+          gh run download "$GITHUB_RUN_ID" \
+            --repo "$GITHUB_REPOSITORY" \
+            --name marc-shared-release-validation \
+            --dir validation-metadata
 
-          "Smoke test passed: generated and probed a 128x72 PNG with the published binaries."
+      - name: Upload feature manifests to release
+        env:
+          GH_TOKEN: ${{ github.token }}
+          RELEASE_TAG: ${{ needs.smoke-test.outputs.release_tag }}
+        run: |
+          set -euo pipefail
+          gh release upload "$RELEASE_TAG" \
+            validation-metadata/features.json \
+            validation-metadata/features.txt \
+            validation-metadata/feature-diff.txt \
+            --repo "$GITHUB_REPOSITORY" \
+            --clobber
+
+  release-sbom:
+    name: Generate SBOM from published package
+    if: ${{ github.event_name != 'pull_request' }}
+    needs: smoke-test
+    runs-on: ubuntu-24.04
+    timeout-minutes: 20
+    permissions:
+      contents: write
+
+    steps:
+      - name: Download and extract published archive
+        env:
+          GH_TOKEN: ${{ github.token }}
+          RELEASE_TAG: ${{ needs.smoke-test.outputs.release_tag }}
+        run: |
+          set -euo pipefail
+          mkdir -p release-download release-extract release-sbom
+          gh release download "$RELEASE_TAG" \
+            --repo "$GITHUB_REPOSITORY" \
+            --pattern '*-win64-marc-shared.zip' \
+            --dir release-download \
+            --clobber
+          archive="$(find release-download -maxdepth 1 -type f -name '*.zip' -print -quit)"
+          test -n "$archive"
+          unzip -q "$archive" -d release-extract
+
+      - name: Generate package SPDX SBOM with Syft
+        uses: anchore/sbom-action@e22c389904149dbc22b58101806040fa8d37a610 # v0
+        with:
+          path: release-extract
+          format: spdx-json
+          output-file: release-sbom/ffmpeg-win64-marc-shared-sbom.spdx.json
+          upload-artifact: false
+          upload-release-assets: false
+
+      - name: Upload package SBOM to release
+        env:
+          GH_TOKEN: ${{ github.token }}
+          RELEASE_TAG: ${{ needs.smoke-test.outputs.release_tag }}
+        run: |
+          set -euo pipefail
+          gh release upload "$RELEASE_TAG" \
+            release-sbom/ffmpeg-win64-marc-shared-sbom.spdx.json \
+            --repo "$GITHUB_REPOSITORY" \
+            --clobber

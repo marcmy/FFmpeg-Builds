@@ -31,13 +31,11 @@ Examples include:
 
 The exact list lives in `scripts.d/` and may change as FFmpeg master and upstream dependencies change. The intent is broad usefulness, not a frozen minimal matrix.
 
-## Compatibility Policy
+## NVENC Compatibility
 
-Compatibility decisions that intentionally differ from bleeding-edge upstream dependencies live in `variants/win64-marc-shared.policy.sh`.
+Marc Shared follows the normal current `nv-codec-headers` snapshot selected by `scripts.d/50-ffnvcodec.sh`; it no longer carries a separate Marc-specific NVENC SDK pin or compatibility-policy file. Older FFmpeg release branches can still use the compatibility header snapshots already present in the base build logic.
 
-Marc Shared now follows the normal current `nv-codec-headers` snapshot selected by `scripts.d/50-ffnvcodec.sh` instead of pinning a separate SDK 13.0 branch. The currently tracked snapshot exposes NVENC API 13.1, so Marc Shared now declares NVIDIA R610 (`610.0`) or newer as its minimum driver family.
-
-Older FFmpeg release branches can still use the compatibility header snapshots already present in the base build logic; the custom `marc-shared` variant no longer overrides that selection. Release metadata records the exact current header commit actually used by the dependency build rather than maintaining a second Marc-specific commit pin.
+Release metadata detects the NVENC API major/minor directly from `nvEncodeAPI.h` inside the exact dependency image and records the header source repository, commit, and SHA-256. NVIDIA driver requirements are deliberately not hard-coded into the build: use the Video Codec SDK requirement corresponding to the API reported in `buildinfo.json`.
 
 ## Release Cadence
 
@@ -69,13 +67,15 @@ Hardware encoders such as NVENC are verified as compiled-in features on the host
 Successful releases gain additional machine-readable and human-readable assets:
 
 - `checksums.sha256` - package digest produced by the release build
-- `buildinfo.json` - FFmpeg and builder commits, exact dependency image, compiler/linker information, configure flags, package SHA-256, and compatibility policy including NVENC API and minimum NVIDIA driver
+- `buildinfo.json` - FFmpeg and builder commits, exact dependency image, compiler/linker information, configure flags, package SHA-256, and detected NVENC API/header provenance
 - `features.json` - structured feature inventory from the packaged FFmpeg binary
 - `features.txt` - human-readable feature inventory
 - `feature-diff.txt` - additions and removals relative to the previous Marc Shared release
 - `ffmpeg-win64-marc-shared-sbom.spdx.json` - SPDX SBOM generated from the contents of the actual published package
 
 The required-feature baseline is maintained in `.github/marc-shared-required-features.json`. Losing one of those features turns the release validation red instead of silently shipping a reduced build.
+
+Pull requests that touch the Marc Shared build path get a targeted `win64 marc-shared` dependency/FFmpeg build. The resulting Windows archive is then exercised on a Windows runner with the same runtime and required-feature validator used for published releases. The much larger upstream target/variant matrix remains available as a manual workflow when broader coverage is needed.
 
 ## Install With Scoop
 
@@ -129,7 +129,7 @@ Common targets include:
 - `win64` - x86_64 Windows
 - `win32` - x86 Windows
 - `linux64` - x86_64 Linux, glibc >= 2.28, linux >= 4.18
-- `linuxarm64` - arm64/aarch64 Linux, glibc >= 2.28, linux >= 4.18
+- `linuxarm64` - arm64/aarch64 Linux
 
 Common variants include:
 

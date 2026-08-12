@@ -16,6 +16,18 @@ fi
 # shellcheck disable=SC1090
 source "$POLICY_FILE"
 
+NV_CODEC_HEADERS_SCRIPT="${MARC_NV_CODEC_HEADERS_SCRIPT:-scripts.d/50-ffnvcodec.sh}"
+if [[ ! -f "$NV_CODEC_HEADERS_SCRIPT" ]]; then
+    echo "NV Codec headers build script not found: $NV_CODEC_HEADERS_SCRIPT" >&2
+    exit 1
+fi
+# Source the normal dependency declaration so metadata follows the same
+# current nv-codec-headers snapshot as the build instead of duplicating a pin.
+# shellcheck disable=SC1090
+source "$NV_CODEC_HEADERS_SCRIPT"
+MARC_NV_CODEC_HEADERS_BRANCH="default"
+MARC_NV_CODEC_HEADERS_COMMIT="${SCRIPT_COMMIT:-}"
+
 for required_var in MARC_NVENC_API MARC_NV_CODEC_HEADERS_BRANCH MARC_NV_CODEC_HEADERS_COMMIT MARC_NVIDIA_MIN_DRIVER; do
     if [[ -z "${!required_var:-}" ]]; then
         echo "Compatibility policy is missing $required_var" >&2

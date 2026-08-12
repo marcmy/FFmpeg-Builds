@@ -35,9 +35,9 @@ The exact list lives in `scripts.d/` and may change as FFmpeg master and upstrea
 
 Compatibility decisions that intentionally differ from bleeding-edge upstream dependencies live in `variants/win64-marc-shared.policy.sh`.
 
-In particular, the Marc Shared build currently targets NVIDIA NVENC API 13.0 instead of automatically adopting the newest `nv-codec-headers`. This keeps NVENC usable with NVIDIA R590 drivers such as 596.49 while current FFmpeg master compile-gates features that require newer NVENC APIs.
+Marc Shared now follows the normal current `nv-codec-headers` snapshot selected by `scripts.d/50-ffnvcodec.sh` instead of pinning a separate SDK 13.0 branch. The currently tracked snapshot exposes NVENC API 13.1, so Marc Shared now declares NVIDIA R610 (`610.0`) or newer as its minimum driver family.
 
-The dependency build checks the policy against the pinned `nv-codec-headers` revision and fails rather than silently drifting to a different NVENC API requirement.
+Older FFmpeg release branches can still use the compatibility header snapshots already present in the base build logic; the custom `marc-shared` variant no longer overrides that selection. Release metadata records the exact current header commit actually used by the dependency build rather than maintaining a second Marc-specific commit pin.
 
 ## Release Cadence
 

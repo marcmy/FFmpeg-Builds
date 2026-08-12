@@ -15,8 +15,6 @@ on:
     paths:
       - .github/workflows/publish-marc-shared-buildinfo.yml
       - .github/scripts/create-marc-shared-buildinfo.sh
-      - variants/win64-marc-shared.policy.sh
-      - generate.sh
       - scripts.d/50-ffnvcodec.sh
 
 permissions:

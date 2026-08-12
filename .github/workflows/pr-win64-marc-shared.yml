@@ -1,0 +1,161 @@
+name: Test win64 Marc Shared PR
+
+on:
+  pull_request:
+    branches:
+      - master
+    paths:
+      - .github/workflows/pr-win64-marc-shared.yml
+      - .github/marc-shared-required-features.json
+      - .github/scripts/test-marc-shared-release.ps1
+      - addins/**
+      - patches/**
+      - scripts.d/**
+      - util/**
+      - variants/**
+      - build.sh
+      - download.sh
+      - generate.sh
+      - makeimage.sh
+
+permissions:
+  actions: read
+  contents: read
+  packages: read
+
+concurrency:
+  group: pr-win64-marc-shared-${{ github.event.pull_request.number }}
+  cancel-in-progress: true
+
+env:
+  TARGET: win64
+  VARIANT: marc-shared
+  TARGET_REPO: ghcr.io/marcmy/ffmpeg-builds
+  FORCE_JAVASCRIPT_ACTIONS_TO_NODE24: true
+
+jobs:
+  build:
+    name: Build PR archive
+    runs-on: ubuntu-24.04
+    timeout-minutes: 360
+
+    steps:
+      - name: Free disk space
+        run: |
+          df -h
+          sudo apt-get clean
+          docker system prune -a -f
+          sudo rm -rf /opt/ghc /usr/local/.ghcup /usr/local/lib/android
+          df -h
+
+      - name: Checkout
+        uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7
+        with:
+          persist-credentials: false
+
+      - name: Restore FFmpeg source download cache
+        id: ffmpeg-download-cache
+        uses: actions/cache/restore@55cc8345863c7cc4c66a329aec7e433d2d1c52a9 # v6
+        with:
+          path: .cache/downloads
+          key: ffmpeg-pr-download-${{ runner.os }}-${{ env.TARGET }}-${{ env.VARIANT }}-${{ hashFiles('download.sh', 'util/dl_functions.sh', 'variants/**', 'scripts.d/**', 'addins/**') }}
+          restore-keys: |
+            ffmpeg-pr-download-${{ runner.os }}-${{ env.TARGET }}-${{ env.VARIANT }}-
+            ffmpeg-download-cache-${{ runner.os }}-${{ env.TARGET }}-${{ env.VARIANT }}-
+
+      - name: Set up Docker Buildx
+        uses: docker/setup-buildx-action@d7f5e7f509e45cec5c76c4d5afdd7de93d0b3df5 # v4.1.0
+        with:
+          buildkitd-config: .github/buildkit.toml
+
+      - name: Login to GHCR
+        uses: docker/login-action@4907a6ddec9925e35a0a9e82d7399ccc52663121 # v4.1.0
+        with:
+          registry: ghcr.io
+          username: ${{ github.actor }}
+          password: ${{ github.token }}
+
+      - name: Build Marc Shared dependency image
+        env:
+          QUICKBUILD: 1
+          NOCLEAN: 1
+          FFBUILD_LOCAL_FINAL_CACHE: 0
+          FFBUILD_DOCKER_CACHE_FROM: type=registry,ref=ghcr.io/marcmy/ffmpeg-builds/win64-marc-shared:buildcache
+        run: ./makeimage.sh "$TARGET" "$VARIANT"
+
+      - name: Build FFmpeg
+        run: ./build.sh "$TARGET" "$VARIANT"
+
+      - name: Upload PR archive
+        uses: actions/upload-artifact@043fb46d1a93c77aae656e7c1c64a875d1fc6a0a # v7.0.1
+        with:
+          name: win64-marc-shared-pr
+          path: artifacts/*.zip
+          if-no-files-found: error
+          retention-days: 7
+
+      - name: Save FFmpeg source download cache
+        if: ${{ always() && steps.ffmpeg-download-cache.outputs.cache-hit != 'true' }}
+        uses: actions/cache/save@55cc8345863c7cc4c66a329aec7e433d2d1c52a9 # v6
+        with:
+          path: .cache/downloads
+          key: ${{ steps.ffmpeg-download-cache.outputs.cache-primary-key }}
+
+  validate-windows:
+    name: Validate PR archive on Windows
+    needs: build
+    runs-on: windows-2025
+    timeout-minutes: 30
+
+    steps:
+      - name: Checkout validation scripts
+        uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7
+        with:
+          persist-credentials: false
+
+      - name: Download PR archive from this run
+        shell: pwsh
+        env:
+          GH_TOKEN: ${{ github.token }}
+        run: |
+          $ErrorActionPreference = 'Stop'
+          New-Item -ItemType Directory -Force -Path pr-artifact | Out-Null
+          gh run download $env:GITHUB_RUN_ID `
+            --repo $env:GITHUB_REPOSITORY `
+            --name win64-marc-shared-pr `
+            --dir pr-artifact
+          if ($LASTEXITCODE -ne 0) {
+            throw 'Unable to download the PR build artifact.'
+          }
+
+      - name: Extract and validate PR archive
+        shell: pwsh
+        run: |
+          $ErrorActionPreference = 'Stop'
+
+          $archives = @(Get-ChildItem -LiteralPath pr-artifact -Recurse -File -Filter '*.zip')
+          if ($archives.Count -ne 1) {
+            throw "Expected exactly one Marc Shared ZIP, found $($archives.Count)."
+          }
+
+          $extractPath = Join-Path $env:RUNNER_TEMP 'ffmpeg-marc-shared-pr'
+          Expand-Archive -LiteralPath $archives[0].FullName -DestinationPath $extractPath -Force
+
+          $ffmpeg = Get-ChildItem -LiteralPath $extractPath -Recurse -File -Filter 'ffmpeg.exe' | Select-Object -First 1
+          $ffprobe = Get-ChildItem -LiteralPath $extractPath -Recurse -File -Filter 'ffprobe.exe' | Select-Object -First 1
+          if (-not $ffmpeg -or -not $ffprobe) {
+            throw 'ffmpeg.exe or ffprobe.exe is missing from the PR archive.'
+          }
+          if ($ffmpeg.DirectoryName -ne $ffprobe.DirectoryName) {
+            throw 'ffmpeg.exe and ffprobe.exe are not packaged in the same directory.'
+          }
+
+          New-Item -ItemType Directory -Force -Path validation-metadata | Out-Null
+          & .github/scripts/test-marc-shared-release.ps1 `
+            -FfmpegPath $ffmpeg.FullName `
+            -FfprobePath $ffprobe.FullName `
+            -WorkDir (Join-Path $env:RUNNER_TEMP 'ffmpeg-marc-shared-pr-smoke') `
+            -RequiredFeaturesPath '.github/marc-shared-required-features.json' `
+            -FeatureJsonPath 'validation-metadata/features.json' `
+            -FeatureTextPath 'validation-metadata/features.txt' `
+            -FeatureDiffPath 'validation-metadata/feature-diff.txt'

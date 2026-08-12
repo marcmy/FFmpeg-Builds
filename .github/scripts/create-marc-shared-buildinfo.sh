@@ -8,29 +8,21 @@ set -euo pipefail
 : "${IMAGE_INPUT_SHA:?IMAGE_INPUT_SHA is required}"
 : "${IMAGE_REF:?IMAGE_REF is required}"
 
-POLICY_FILE="${MARC_POLICY_FILE:-variants/win64-marc-shared.policy.sh}"
-if [[ ! -f "$POLICY_FILE" ]]; then
-    echo "Compatibility policy not found: $POLICY_FILE" >&2
-    exit 1
-fi
-# shellcheck disable=SC1090
-source "$POLICY_FILE"
-
 NV_CODEC_HEADERS_SCRIPT="${MARC_NV_CODEC_HEADERS_SCRIPT:-scripts.d/50-ffnvcodec.sh}"
 if [[ ! -f "$NV_CODEC_HEADERS_SCRIPT" ]]; then
     echo "NV Codec headers build script not found: $NV_CODEC_HEADERS_SCRIPT" >&2
     exit 1
 fi
-# Source the normal dependency declaration so metadata follows the same
-# current nv-codec-headers snapshot as the build instead of duplicating a pin.
+# Source the normal dependency declaration so metadata records the exact
+# nv-codec-headers source snapshot selected by the build.
 # shellcheck disable=SC1090
 source "$NV_CODEC_HEADERS_SCRIPT"
-MARC_NV_CODEC_HEADERS_BRANCH="default"
-MARC_NV_CODEC_HEADERS_COMMIT="${SCRIPT_COMMIT:-}"
 
-for required_var in MARC_NVENC_API MARC_NV_CODEC_HEADERS_BRANCH MARC_NV_CODEC_HEADERS_COMMIT MARC_NVIDIA_MIN_DRIVER; do
+NV_CODEC_HEADERS_REPO="${SCRIPT_REPO:-}"
+NV_CODEC_HEADERS_COMMIT="${SCRIPT_COMMIT:-}"
+for required_var in NV_CODEC_HEADERS_REPO NV_CODEC_HEADERS_COMMIT; do
     if [[ -z "${!required_var:-}" ]]; then
-        echo "Compatibility policy is missing $required_var" >&2
+        echo "Unable to resolve $required_var from $NV_CODEC_HEADERS_SCRIPT" >&2
         exit 1
     fi
 done
@@ -54,10 +46,24 @@ ff_ldflags="$(container_value 'printf %s "$FF_LDFLAGS"')"
 ff_ldexeflags="$(container_value 'printf %s "$FF_LDEXEFLAGS"')"
 ff_libs="$(container_value 'printf %s "$FF_LIBS"')"
 
+nvenc_major="$(container_value 'grep -m1 "^#define NVENCAPI_MAJOR_VERSION " "$FFBUILD_PREFIX/include/ffnvcodec/nvEncodeAPI.h" | tr -s " " | cut -d" " -f3')"
+nvenc_minor="$(container_value 'grep -m1 "^#define NVENCAPI_MINOR_VERSION " "$FFBUILD_PREFIX/include/ffnvcodec/nvEncodeAPI.h" | tr -s " " | cut -d" " -f3')"
+nv_codec_headers_sha256="$(container_value 'sha256sum "$FFBUILD_PREFIX/include/ffnvcodec/nvEncodeAPI.h" | cut -d" " -f1')"
+
+if ! [[ "$nvenc_major" =~ ^[0-9]+$ && "$nvenc_minor" =~ ^[0-9]+$ ]]; then
+    echo "Unable to detect NVENC API version from the dependency image." >&2
+    exit 1
+fi
+if ! [[ "$nv_codec_headers_sha256" =~ ^[0-9a-f]{64}$ ]]; then
+    echo "Unable to hash nvEncodeAPI.h from the dependency image." >&2
+    exit 1
+fi
+nvenc_api="${nvenc_major}.${nvenc_minor}"
+
 mkdir -p "$(dirname "$BUILDINFO_PATH")"
 
 jq -n \
-    --arg schema_version "1" \
+    --arg schema_version "2" \
     --arg release_tag "$RELEASE_TAG" \
     --arg package_name "$(basename "$ZIP_PATH")" \
     --arg package_sha256 "$zip_sha256" \
@@ -75,10 +81,10 @@ jq -n \
     --arg image_ref "$IMAGE_REF" \
     --arg image_id "$image_id" \
     --arg image_repo_digest "$image_repo_digest" \
-    --arg nvenc_api "$MARC_NVENC_API" \
-    --arg nv_codec_headers_branch "$MARC_NV_CODEC_HEADERS_BRANCH" \
-    --arg nv_codec_headers_commit "$MARC_NV_CODEC_HEADERS_COMMIT" \
-    --arg nvidia_min_driver "$MARC_NVIDIA_MIN_DRIVER" \
+    --arg nvenc_api "$nvenc_api" \
+    --arg nv_codec_headers_repo "$NV_CODEC_HEADERS_REPO" \
+    --arg nv_codec_headers_commit "$NV_CODEC_HEADERS_COMMIT" \
+    --arg nv_codec_headers_sha256 "$nv_codec_headers_sha256" \
     --arg cc_version "$cc_version" \
     --arg ld_version "$ld_version" \
     --arg ff_configure "$ff_configure" \
@@ -133,9 +139,11 @@ jq -n \
       compatibility: {
         nvenc: {
           api: $nvenc_api,
-          nv_codec_headers_branch: $nv_codec_headers_branch,
-          nv_codec_headers_commit: $nv_codec_headers_commit,
-          minimum_nvidia_driver: $nvidia_min_driver
+          nv_codec_headers: {
+            repository: $nv_codec_headers_repo,
+            commit: $nv_codec_headers_commit,
+            header_sha256: $nv_codec_headers_sha256
+          }
         }
       },
       provenance: {

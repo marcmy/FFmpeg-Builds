@@ -129,7 +129,7 @@ Common targets include:
 - `win64` - x86_64 Windows
 - `win32` - x86 Windows
 - `linux64` - x86_64 Linux, glibc >= 2.28, linux >= 4.18
-- `linuxarm64` - arm64/aarch64 Linux
+- `linuxarm64` - arm64/aarch64 Linux, glibc >= 2.28, linux >= 4.18
 
 Common variants include:
 

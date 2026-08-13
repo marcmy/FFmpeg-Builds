@@ -54,6 +54,13 @@ fi
 git clone --filter=blob:none --branch='__GIT_BRANCH__' '__FFMPEG_REPO__' ffmpeg
 cd ffmpeg
 
+# OpenAPV added a metadata-container descriptor argument to oapvm_create() before
+# FFmpeg master adopted the new API. Adapt only when the installed header exposes
+# that signature so older dependency images continue to build unchanged.
+if grep -Eq 'oapvm_create\(oapvm_cdesc_t[[:space:]]*\*cdesc,[[:space:]]*int[[:space:]]*\*err\)' /opt/ffbuild/include/oapv/oapv.h 2>/dev/null; then
+    sed -i 's/oapvm_create(&ret)/oapvm_create(NULL, \&ret)/' libavcodec/liboapvenc.c
+fi
+
 # FFmpeg master removed this configure switch while existing dependency images
 # may still inject it. Shaderc remains available to Vulkan consumers through
 # the packaged dependency; only the obsolete FFmpeg configure flag is dropped.

@@ -9,7 +9,8 @@
     "libaom-av1",
     "libvpx-vp9",
     "libopus",
-    "libmp3lame"
+    "libmp3lame",
+    "liboapv"
   ],
   "decoders": [
     "h264",

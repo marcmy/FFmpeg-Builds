@@ -285,6 +285,12 @@ try {
     )
     Assert-ProbeCodec -Path $av1 -ExpectedCodec 'av1'
 
+    Invoke-Checked -Executable $FfmpegPath -Arguments @(
+        '-hide_banner', '-loglevel', 'error',
+        '-f', 'lavfi', '-i', 'testsrc2=size=256x144:rate=1',
+        '-frames:v', '1', '-pix_fmt', 'yuv422p10le', '-c:v', 'liboapv', '-f', 'null', '-'
+    )
+
     $opus = Join-Path $WorkDir 'smoke-opus.ogg'
     Invoke-Checked -Executable $FfmpegPath -Arguments @(
         '-hide_banner', '-loglevel', 'error',

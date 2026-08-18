@@ -255,17 +255,9 @@ jobs:
           echo "Dependency image input SHA: $image_input_sha"
           echo "Dependency image: $image_ref"
 
-      - name: Check out pull-request validation revision
-        if: ${{ github.event_name == 'pull_request' }}
+      - name: Check out workflow revision
         uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7
         with:
-          persist-credentials: false
-
-      - name: Check out exact builder revision
-        if: ${{ github.event_name != 'pull_request' }}
-        uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7
-        with:
-          ref: ${{ steps.release.outputs.builder_sha }}
           persist-credentials: false
 
       - name: Download published package

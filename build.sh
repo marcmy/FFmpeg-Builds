@@ -24,6 +24,11 @@ FFMPEG_REPO="${FFMPEG_REPO_OVERRIDE:-$FFMPEG_REPO}"
 GIT_BRANCH="${GIT_BRANCH:-master}"
 GIT_BRANCH="${GIT_BRANCH_OVERRIDE:-$GIT_BRANCH}"
 
+RPATH_LDEXEFLAGS=''
+if [[ $TARGET == linux* && $VARIANT == *shared* ]]; then
+    RPATH_LDEXEFLAGS=' -Wl,-rpath,$ORIGIN/../lib'
+fi
+
 CCACHE_ARGS=()
 if [[ -n "${FFBUILD_CCACHE_DIR:-}" ]]; then
     mkdir -p "$FFBUILD_CCACHE_DIR"
@@ -68,7 +73,7 @@ FF_CONFIGURE="${FF_CONFIGURE//--enable-libshaderc/}"
 
 ./configure --prefix=/ffbuild/prefix --pkg-config-flags="--static" $FFBUILD_TARGET_FLAGS $FF_CONFIGURE \
     --extra-cflags="$FF_CFLAGS" --extra-cxxflags="$FF_CXXFLAGS" --extra-libs="$FF_LIBS" \
-    --extra-ldflags="$FF_LDFLAGS" --extra-ldexeflags="$FF_LDEXEFLAGS" \
+    --extra-ldflags="$FF_LDFLAGS" --extra-ldexeflags="$FF_LDEXEFLAGS$RPATH_LDEXEFLAGS" \
     --cc="$CC" --cxx="$CXX" --ar="$AR" --ranlib="$RANLIB" --nm="$NM" \
     --extra-version="$(date +%Y%m%d)" || { cat ffbuild/config.log; exit 1; }
 make -j$(nproc) V=1
@@ -136,7 +141,7 @@ sed -i \
 
 [[ -t 1 ]] && TTY_ARG="-t" || TTY_ARG=""
 
-docker run --rm -i $TTY_ARG "${UIDARGS[@]}" "${CCACHE_ARGS[@]}" -v "$PWD/ffbuild":/ffbuild -v "$BUILD_SCRIPT":/build.sh "$IMAGE" bash /build.sh
+docker run --rm -i $TTY_ARG "${UIDARGS[@]}" "${CCACHE_ARGS[@]}" -e "RPATH_LDEXEFLAGS=$RPATH_LDEXEFLAGS" -v "$PWD/ffbuild":/ffbuild -v "$BUILD_SCRIPT":/build.sh "$IMAGE" bash /build.sh
 
 if [[ -n "$FFBUILD_OUTPUT_DIR" ]]; then
     mkdir -p "$FFBUILD_OUTPUT_DIR"

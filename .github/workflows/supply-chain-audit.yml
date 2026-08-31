@@ -41,8 +41,30 @@ jobs:
         with:
           sarif_file: trivy-results.sarif
 
+  syft-pr:
+    name: Generate independent SBOM (PR smoke test)
+    if: github.event_name == 'pull_request'
+    runs-on: ubuntu-24.04
+    timeout-minutes: 30
+    permissions:
+      contents: read
+    steps:
+      - name: Check out repository
+        uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7
+        with:
+          persist-credentials: false
+      - name: Generate SPDX SBOM with Syft
+        uses: anchore/sbom-action@3ad7283483fc7af8ff2b4ea19663c2d5ca935e26 # v0.24.2
+        with:
+          path: .
+          format: spdx-json
+          artifact-name: sbom.spdx.json
+          dependency-snapshot: false
+          upload-artifact: true
+          upload-release-assets: false
+
   syft:
-    name: Generate independent SBOM
+    name: Generate independent SBOM + dependency snapshot
     if: github.event_name != 'pull_request'
     runs-on: ubuntu-24.04
     timeout-minutes: 30

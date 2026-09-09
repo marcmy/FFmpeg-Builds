@@ -255,7 +255,7 @@ jobs:
           name: marc-shared-image-build-log-${{ github.run_id }}-${{ github.run_attempt }}
           path: logs/build-win64-marc-shared-image.log
           if-no-files-found: warn
-          retention-days: 30
+          retention-days: 14
 
       - name: Save FFmpeg source download cache
         if: ${{ always() && steps.ffmpeg-download-cache.outputs.cache-hit != 'true' }}

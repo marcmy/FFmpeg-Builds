@@ -2,6 +2,12 @@ name: Build win64 Marc Shared FFmpeg image
 
 on:
   workflow_dispatch:
+    inputs:
+      refresh_base_images:
+        description: Rebuild the pinned base images even if their source inputs are unchanged
+        type: boolean
+        required: false
+        default: false
   push:
     branches:
       - master
@@ -9,7 +15,8 @@ on:
       - .github/buildkit.toml
       - .github/workflows/build-win64-marc-shared-image.yml
       - addins/**
-      - images/**
+      - images/base/**
+      - images/base-win64/**
       - patches/**
       - scripts.d/**
       - util/**
@@ -26,7 +33,6 @@ permissions:
 env:
   TARGET: win64
   VARIANT: marc-shared
-  SOURCE_REPO: ghcr.io/btbn/ffmpeg-builds
   TARGET_REPO: ghcr.io/marcmy/ffmpeg-builds
   FORCE_JAVASCRIPT_ACTIONS_TO_NODE24: true
 
@@ -63,7 +69,8 @@ jobs:
               .github/buildkit.toml \
               .github/workflows/build-win64-marc-shared-image.yml \
               addins \
-              images \
+              images/base \
+              images/base-win64 \
               patches \
               scripts.d \
               util \
@@ -72,14 +79,35 @@ jobs:
               generate.sh \
               makeimage.sh
           )"
+          base_input_sha="$(
+            git log -1 --format=%H -- \
+              images/base
+          )"
+          target_base_input_sha="$(
+            git log -1 --format=%H -- \
+              images/base \
+              images/base-win64
+          )"
 
           if [[ -z "$image_input_sha" ]]; then
             echo "Unable to resolve the image input revision."
             exit 1
           fi
+          if [[ -z "$base_input_sha" ]]; then
+            echo "Unable to resolve the base image input revision."
+            exit 1
+          fi
+          if [[ -z "$target_base_input_sha" ]]; then
+            echo "Unable to resolve the target base image input revision."
+            exit 1
+          fi
 
           echo "Image input revision: ${image_input_sha}"
+          echo "Base image input revision: ${base_input_sha}"
+          echo "Target base image input revision: ${target_base_input_sha}"
           echo "sha=${image_input_sha}" >> "$GITHUB_OUTPUT"
+          echo "base_sha=${base_input_sha}" >> "$GITHUB_OUTPUT"
+          echo "target_base_sha=${target_base_input_sha}" >> "$GITHUB_OUTPUT"
 
       - name: Restore FFmpeg source download cache
         id: ffmpeg-download-cache
@@ -102,16 +130,78 @@ jobs:
           username: ${{ github.actor }}
           password: ${{ github.token }}
 
-      - name: Borrow BtbN base images
+      - name: Ensure stable base images for the source revisions
+        env:
+          BASE_INPUT_SHA: ${{ steps.image-revision.outputs.base_sha }}
+          TARGET_BASE_INPUT_SHA: ${{ steps.image-revision.outputs.target_base_sha }}
+          FORCE_BASE_REFRESH: ${{ github.event_name == 'workflow_dispatch' && inputs.refresh_base_images && '1' || '0' }}
         run: |
-          docker pull "$SOURCE_REPO/base:latest"
-          docker pull "$SOURCE_REPO/base-win64:latest"
+          set -euo pipefail
 
-          docker tag "$SOURCE_REPO/base:latest" "$TARGET_REPO/base:latest"
-          docker tag "$SOURCE_REPO/base-win64:latest" "$TARGET_REPO/base-win64:latest"
+          # Moving :latest base tags invalidate every downstream BuildKit cache key.
+          # Keep the cache parents tied to the source revisions that define them.
+          base_ref="$TARGET_REPO/base:source-${BASE_INPUT_SHA}"
+          target_base_ref="$TARGET_REPO/base-win64:source-${TARGET_BASE_INPUT_SHA}"
+          base_refresh=0
+          target_base_refresh=0
 
-          docker push "$TARGET_REPO/base:latest"
-          docker push "$TARGET_REPO/base-win64:latest"
+          if [[ "$FORCE_BASE_REFRESH" == "1" ]]; then
+            echo "Manual base-image refresh requested."
+            base_refresh=1
+            target_base_refresh=1
+          fi
+
+          if ! docker buildx imagetools inspect "$base_ref" >/dev/null 2>&1; then
+            echo "Pinned base image is missing: $base_ref"
+            base_refresh=1
+          fi
+          if ! docker buildx imagetools inspect "$target_base_ref" >/dev/null 2>&1; then
+            echo "Pinned target base image is missing: $target_base_ref"
+            target_base_refresh=1
+          fi
+
+          if (( base_refresh )); then
+            target_base_refresh=1
+            echo "Building base image for source revision ${BASE_INPUT_SHA}."
+            docker buildx build \
+              --pull \
+              --push \
+              --provenance=false \
+              --cache-from "type=registry,ref=${TARGET_REPO}/base:buildcache" \
+              --cache-to "type=registry,ref=${TARGET_REPO}/base:buildcache,mode=max" \
+              --tag "$base_ref" \
+              --tag "$TARGET_REPO/base:latest" \
+              images/base
+          else
+            echo "Reusing base image for source revision ${BASE_INPUT_SHA}."
+            docker buildx imagetools create \
+              --tag "$TARGET_REPO/base:latest" \
+              "$base_ref"
+          fi
+
+          if (( target_base_refresh )); then
+            echo "Building target base image for source revision ${TARGET_BASE_INPUT_SHA}."
+            docker buildx build \
+              --pull \
+              --push \
+              --provenance=false \
+              --build-arg "GH_REPO=${TARGET_REPO}" \
+              --build-arg "BASE_TAG=source-${BASE_INPUT_SHA}" \
+              --cache-from "type=registry,ref=${TARGET_REPO}/base-win64:buildcache" \
+              --cache-to "type=registry,ref=${TARGET_REPO}/base-win64:buildcache,mode=max" \
+              --tag "$target_base_ref" \
+              --tag "$TARGET_REPO/base-win64:latest" \
+              images/base-win64
+          else
+            echo "Reusing target base image for source revision ${TARGET_BASE_INPUT_SHA}."
+            docker buildx imagetools create \
+              --tag "$TARGET_REPO/base-win64:latest" \
+              "$target_base_ref"
+          fi
+
+          docker pull "$TARGET_REPO/base:latest"
+          echo "Pinned base source: $base_ref"
+          echo "Pinned target base source: $target_base_ref"
 
       - name: Inspect registry build cache
         run: |
@@ -134,10 +224,13 @@ jobs:
             echo "Run attempt: ${GITHUB_RUN_ATTEMPT}"
             echo "Repository SHA: ${GITHUB_SHA}"
             echo "Image input revision: ${{ steps.image-revision.outputs.sha }}"
+            echo "Base image input revision: ${{ steps.image-revision.outputs.base_sha }}"
+            echo "Target base image input revision: ${{ steps.image-revision.outputs.target_base_sha }}"
             echo "UTC start: $(date -u +'%Y-%m-%dT%H:%M:%SZ')"
             echo
 
             FFBUILD_LOCAL_FINAL_CACHE=0 \
+            FFBUILD_TARGET_IMAGE="${TARGET_REPO}/base-win64:source-${{ steps.image-revision.outputs.target_base_sha }}" \
             FFBUILD_DOCKER_CACHE_FROM="type=registry,ref=${TARGET_REPO}/win64-marc-shared:buildcache" \
             FFBUILD_DOCKER_CACHE_TO="type=registry,ref=${TARGET_REPO}/win64-marc-shared:buildcache,mode=max" \
             QUICKBUILD=1 NOCLEAN=1 ./makeimage.sh "$TARGET" "$VARIANT"

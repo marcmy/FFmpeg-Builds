@@ -57,7 +57,7 @@ bake_images() {
 
     if [[ "${FFBUILD_LOCAL_FINAL_CACHE:-1}" != 0 ]]; then
         final_cache_from+=("type=local,src=.cache/${IMAGE/:/_}")
-        final_cache_to+=("type=local,mode=max,dest=.cache/${IMAGE/:/_}")
+        final_cache_to+=("type=local,mode=max,compression=zstd,compression-level=1,dest=.cache/${IMAGE/:/_}")
     fi
 
     if [[ -n "${FFBUILD_DOCKER_CACHE_FROM:-}" ]]; then
@@ -83,7 +83,7 @@ bake_images() {
             to_bake '  tags       = ["%s"]' "$BASE_IMAGE"
             to_bake '  output     = ["type=docker"]'
             to_bake '  cache-from = ["type=local,src=.cache/%s"]' "${BASE_IMAGE/:/_}"
-            to_bake '  cache-to   = ["type=local,mode=max,dest=.cache/%s"]' "${BASE_IMAGE/:/_}"
+            to_bake '  cache-to   = ["type=local,mode=max,compression=zstd,compression-level=1,dest=.cache/%s"]' "${BASE_IMAGE/:/_}"
             to_bake '}'
 
             to_bake 'target "target-base" {'
@@ -93,7 +93,7 @@ bake_images() {
             to_bake '  tags       = ["%s"]' "$TARGET_IMAGE"
             to_bake '  output     = ["type=docker"]'
             to_bake '  cache-from = ["type=local,src=.cache/%s"]' "${TARGET_IMAGE/:/_}"
-            to_bake '  cache-to   = ["type=local,mode=max,dest=.cache/%s"]' "${TARGET_IMAGE/:/_}"
+            to_bake '  cache-to   = ["type=local,mode=max,compression=zstd,compression-level=1,dest=.cache/%s"]' "${TARGET_IMAGE/:/_}"
             to_bake '}'
         fi
 

@@ -27,8 +27,55 @@ to_bake() {
     echo
 }
 
+trim_cache_spec() {
+    local value="$1"
+    value="${value#"${value%%[![:space:]]*}"}"
+    value="${value%"${value##*[![:space:]]}"}"
+    printf '%s' "$value"
+}
+
+to_bake_list() {
+    local key="$1"
+    shift
+
+    printf '  %s = [' "$key"
+    local separator=""
+    local value
+    for value in "$@"; do
+        printf '%s"%s"' "$separator" "$value"
+        separator=', '
+    done
+    printf ']\n'
+}
+
 bake_images() {
     local -; set +x
+
+    local final_cache_from=()
+    local final_cache_to=()
+    local cache_spec
+
+    if [[ "${FFBUILD_LOCAL_FINAL_CACHE:-1}" != 0 ]]; then
+        final_cache_from+=("type=local,src=.cache/${IMAGE/:/_}")
+        final_cache_to+=("type=local,mode=max,compression=zstd,compression-level=1,dest=.cache/${IMAGE/:/_}")
+    fi
+
+    if [[ -n "${FFBUILD_DOCKER_CACHE_FROM:-}" ]]; then
+        while IFS= read -r cache_spec; do
+            cache_spec="$(trim_cache_spec "$cache_spec")"
+            [[ -n "$cache_spec" ]] || continue
+            final_cache_from+=("$cache_spec")
+        done <<< "$FFBUILD_DOCKER_CACHE_FROM"
+    fi
+
+    if [[ -n "${FFBUILD_DOCKER_CACHE_TO:-}" ]]; then
+        while IFS= read -r cache_spec; do
+            cache_spec="$(trim_cache_spec "$cache_spec")"
+            [[ -n "$cache_spec" ]] || continue
+            final_cache_to+=("$cache_spec")
+        done <<< "$FFBUILD_DOCKER_CACHE_TO"
+    fi
+
     {
         if [[ -z "$QUICKBUILD" ]]; then
             to_bake 'target "base" {'
@@ -57,8 +104,12 @@ bake_images() {
         fi
         to_bake '  tags       = ["%s"]' "$IMAGE"
         to_bake '  output     = ["type=docker"]'
-        to_bake '  cache-from = ["type=local,src=.cache/%s"]' "${IMAGE/:/_}"
-        to_bake '  cache-to   = ["type=local,mode=max,compression=zstd,compression-level=1,dest=.cache/%s"]' "${IMAGE/:/_}"
+        if (( ${#final_cache_from[@]} )); then
+            to_bake_list 'cache-from' "${final_cache_from[@]}"
+        fi
+        if (( ${#final_cache_to[@]} )); then
+            to_bake_list 'cache-to' "${final_cache_to[@]}"
+        fi
         to_bake '}'
     } | tee /dev/stderr | docker buildx --builder ffbuilder bake -f - "$@"
 }

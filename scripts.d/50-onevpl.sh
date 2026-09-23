@@ -10,6 +10,12 @@ ffbuild_enabled() {
 }
 
 ffbuild_dockerbuild() {
+    # libvpl's fallback secure-string macros are intended only for old MSVC.
+    # With current mingw-w64 they expand inside stralign.h and break the build.
+    # This is the upstream fix from intel/libvpl#198, applied locally until the
+    # pinned libvpl revision contains it.
+    sed -i 's/^#if _MSC_VER < 1400$/#if defined(_MSC_VER) \&\& _MSC_VER < 1400/' libvpl/src/windows/mfx_dispatcher_defs.h
+
     mkdir build && cd build
 
     cmake -GNinja -DCMAKE_TOOLCHAIN_FILE="$FFBUILD_CMAKE_TOOLCHAIN" -DCMAKE_BUILD_TYPE=Release -DCMAKE_INSTALL_PREFIX="$FFBUILD_PREFIX" \
@@ -20,9 +26,7 @@ ffbuild_dockerbuild() {
 
     ninja -j$(nproc)
     DESTDIR="$FFBUILD_DESTDIR" ninja install
-
     rm -rf "$FFBUILD_DESTPREFIX"/{etc,share}
-
     echo "Libs.private: -lstdc++" >> "$FFBUILD_DESTPREFIX"/lib/pkgconfig/vpl.pc
 }
 

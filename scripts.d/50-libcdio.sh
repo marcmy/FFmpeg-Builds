@@ -1,7 +1,7 @@
 #!/bin/bash
 
 SCRIPT_REPO="https://github.com/libcdio/libcdio.git"
-SCRIPT_COMMIT="master"
+SCRIPT_COMMIT="main"
 
 ffbuild_depends() {
     echo base

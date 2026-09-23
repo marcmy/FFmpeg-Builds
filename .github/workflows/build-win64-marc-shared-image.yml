@@ -1,0 +1,281 @@
+name: Build win64 Marc Shared FFmpeg image
+
+on:
+  workflow_dispatch:
+    inputs:
+      refresh_base_images:
+        description: Rebuild the pinned base images even if their source inputs are unchanged
+        type: boolean
+        required: false
+        default: false
+  push:
+    branches:
+      - master
+    paths:
+      - .github/buildkit.toml
+      - .github/workflows/build-win64-marc-shared-image.yml
+      - addins/**
+      - images/base/**
+      - images/base-win64/**
+      - patches/**
+      - scripts.d/**
+      - util/**
+      - variants/**
+      - download.sh
+      - generate.sh
+      - makeimage.sh
+
+permissions:
+  actions: write
+  contents: write
+  packages: write
+
+env:
+  TARGET: win64
+  VARIANT: marc-shared
+  TARGET_REPO: ghcr.io/marcmy/ffmpeg-builds
+  FORCE_JAVASCRIPT_ACTIONS_TO_NODE24: true
+
+concurrency:
+  group: marc-shared-image-${{ github.ref }}
+  cancel-in-progress: true
+
+jobs:
+  build-image:
+    runs-on: ubuntu-latest
+    timeout-minutes: 360
+
+    steps:
+      - name: Free disk space
+        run: |
+          df -h
+          sudo apt-get clean
+          docker system prune -a -f
+          sudo rm -rf /opt/ghc /usr/local/.ghcup /usr/local/lib/android
+          df -h
+
+      - name: Checkout
+        uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7
+        with:
+          fetch-depth: 0
+          persist-credentials: false
+
+      - name: Resolve image input revision
+        id: image-revision
+        run: |
+          set -euo pipefail
+          image_input_sha="$(
+            git log -1 --format=%H -- \
+              .github/buildkit.toml \
+              .github/workflows/build-win64-marc-shared-image.yml \
+              addins \
+              images/base \
+              images/base-win64 \
+              patches \
+              scripts.d \
+              util \
+              variants \
+              download.sh \
+              generate.sh \
+              makeimage.sh
+          )"
+          base_input_sha="$(
+            git log -1 --format=%H -- \
+              images/base
+          )"
+          target_base_input_sha="$(
+            git log -1 --format=%H -- \
+              images/base \
+              images/base-win64
+          )"
+
+          if [[ -z "$image_input_sha" ]]; then
+            echo "Unable to resolve the image input revision."
+            exit 1
+          fi
+          if [[ -z "$base_input_sha" ]]; then
+            echo "Unable to resolve the base image input revision."
+            exit 1
+          fi
+          if [[ -z "$target_base_input_sha" ]]; then
+            echo "Unable to resolve the target base image input revision."
+            exit 1
+          fi
+
+          echo "Image input revision: ${image_input_sha}"
+          echo "Base image input revision: ${base_input_sha}"
+          echo "Target base image input revision: ${target_base_input_sha}"
+          echo "sha=${image_input_sha}" >> "$GITHUB_OUTPUT"
+          echo "base_sha=${base_input_sha}" >> "$GITHUB_OUTPUT"
+          echo "target_base_sha=${target_base_input_sha}" >> "$GITHUB_OUTPUT"
+
+      - name: Restore FFmpeg source download cache
+        id: ffmpeg-download-cache
+        uses: actions/cache/restore@55cc8345863c7cc4c66a329aec7e433d2d1c52a9 # v6
+        with:
+          path: .cache/downloads
+          key: ffmpeg-download-cache-${{ runner.os }}-${{ env.TARGET }}-${{ env.VARIANT }}-${{ hashFiles('download.sh', 'util/dl_functions.sh', 'variants/**', 'scripts.d/**', 'addins/**') }}
+          restore-keys: |
+            ffmpeg-download-cache-${{ runner.os }}-${{ env.TARGET }}-${{ env.VARIANT }}-
+
+      - name: Set up Docker Buildx
+        uses: docker/setup-buildx-action@bb05f3f5519dd87d3ba754cc423b652a5edd6d2c # v4.2.0
+        with:
+          buildkitd-config: .github/buildkit.toml
+
+      - name: Login to GHCR
+        uses: docker/login-action@dbcb813823bdd20940b903addbd779551569679f # v4.6.0
+        with:
+          registry: ghcr.io
+          username: ${{ github.actor }}
+          password: ${{ github.token }}
+
+      - name: Ensure stable base images for the source revisions
+        env:
+          BASE_INPUT_SHA: ${{ steps.image-revision.outputs.base_sha }}
+          TARGET_BASE_INPUT_SHA: ${{ steps.image-revision.outputs.target_base_sha }}
+          FORCE_BASE_REFRESH: ${{ github.event_name == 'workflow_dispatch' && inputs.refresh_base_images && '1' || '0' }}
+        run: |
+          set -euo pipefail
+
+          # Moving :latest base tags invalidate every downstream BuildKit cache key.
+          # Keep the cache parents tied to the source revisions that define them.
+          base_ref="$TARGET_REPO/base:source-${BASE_INPUT_SHA}"
+          target_base_ref="$TARGET_REPO/base-win64:source-${TARGET_BASE_INPUT_SHA}"
+          base_refresh=0
+          target_base_refresh=0
+
+          if [[ "$FORCE_BASE_REFRESH" == "1" ]]; then
+            echo "Manual base-image refresh requested."
+            base_refresh=1
+            target_base_refresh=1
+          fi
+
+          if ! docker buildx imagetools inspect "$base_ref" >/dev/null 2>&1; then
+            echo "Pinned base image is missing: $base_ref"
+            base_refresh=1
+          fi
+          if ! docker buildx imagetools inspect "$target_base_ref" >/dev/null 2>&1; then
+            echo "Pinned target base image is missing: $target_base_ref"
+            target_base_refresh=1
+          fi
+
+          if (( base_refresh )); then
+            target_base_refresh=1
+            echo "Building base image for source revision ${BASE_INPUT_SHA}."
+            docker buildx build \
+              --pull \
+              --push \
+              --provenance=false \
+              --cache-from "type=registry,ref=${TARGET_REPO}/base:buildcache" \
+              --cache-to "type=registry,ref=${TARGET_REPO}/base:buildcache,mode=max" \
+              --tag "$base_ref" \
+              --tag "$TARGET_REPO/base:latest" \
+              images/base
+          else
+            echo "Reusing base image for source revision ${BASE_INPUT_SHA}."
+            docker buildx imagetools create \
+              --tag "$TARGET_REPO/base:latest" \
+              "$base_ref"
+          fi
+
+          if (( target_base_refresh )); then
+            echo "Building target base image for source revision ${TARGET_BASE_INPUT_SHA}."
+            docker buildx build \
+              --pull \
+              --push \
+              --provenance=false \
+              --build-arg "GH_REPO=${TARGET_REPO}" \
+              --build-arg "BASE_TAG=source-${BASE_INPUT_SHA}" \
+              --cache-from "type=registry,ref=${TARGET_REPO}/base-win64:buildcache" \
+              --cache-to "type=registry,ref=${TARGET_REPO}/base-win64:buildcache,mode=max" \
+              --tag "$target_base_ref" \
+              --tag "$TARGET_REPO/base-win64:latest" \
+              images/base-win64
+          else
+            echo "Reusing target base image for source revision ${TARGET_BASE_INPUT_SHA}."
+            docker buildx imagetools create \
+              --tag "$TARGET_REPO/base-win64:latest" \
+              "$target_base_ref"
+          fi
+
+          docker pull "$TARGET_REPO/base:latest"
+          echo "Pinned base source: $base_ref"
+          echo "Pinned target base source: $target_base_ref"
+
+      - name: Inspect registry build cache
+        run: |
+          cache_ref="$TARGET_REPO/win64-marc-shared:buildcache"
+          if docker buildx imagetools inspect "$cache_ref"; then
+            echo "Registry build cache found: $cache_ref"
+          else
+            echo "::warning::Registry build cache is missing or unreadable: $cache_ref"
+          fi
+
+      - name: Build win64 Marc Shared image
+        env:
+          BUILDKIT_PROGRESS: plain
+        run: |
+          mkdir -p logs
+          set +e
+          {
+            echo "=== Build win64 Marc Shared image ==="
+            echo "Run ID: ${GITHUB_RUN_ID}"
+            echo "Run attempt: ${GITHUB_RUN_ATTEMPT}"
+            echo "Repository SHA: ${GITHUB_SHA}"
+            echo "Image input revision: ${{ steps.image-revision.outputs.sha }}"
+            echo "Base image input revision: ${{ steps.image-revision.outputs.base_sha }}"
+            echo "Target base image input revision: ${{ steps.image-revision.outputs.target_base_sha }}"
+            echo "UTC start: $(date -u +'%Y-%m-%dT%H:%M:%SZ')"
+            echo
+
+            FFBUILD_LOCAL_FINAL_CACHE=0 \
+            FFBUILD_TARGET_IMAGE="${TARGET_REPO}/base-win64:source-${{ steps.image-revision.outputs.target_base_sha }}" \
+            FFBUILD_DOCKER_CACHE_FROM="type=registry,ref=${TARGET_REPO}/win64-marc-shared:buildcache" \
+            FFBUILD_DOCKER_CACHE_TO="type=registry,ref=${TARGET_REPO}/win64-marc-shared:buildcache,mode=max" \
+            QUICKBUILD=1 NOCLEAN=1 ./makeimage.sh "$TARGET" "$VARIANT"
+          } 2>&1 | tee logs/build-win64-marc-shared-image.log
+          status=${PIPESTATUS[0]}
+
+          cached_steps="$(grep -c ' CACHED$' logs/build-win64-marc-shared-image.log || true)"
+          cache_imports="$(grep -c 'importing cache manifest' logs/build-win64-marc-shared-image.log || true)"
+          echo "BuildKit cache imports: ${cache_imports}"
+          echo "BuildKit cached steps: ${cached_steps}"
+
+          if [[ "$cache_imports" == "0" ]]; then
+            echo "::warning::BuildKit did not report importing the registry build cache."
+          fi
+
+          exit "$status"
+
+      - name: Upload Marc Shared image build log
+        if: ${{ always() }}
+        uses: actions/upload-artifact@043fb46d1a93c77aae656e7c1c64a875d1fc6a0a # v7.0.1
+        with:
+          name: marc-shared-image-build-log-${{ github.run_id }}-${{ github.run_attempt }}
+          path: logs/build-win64-marc-shared-image.log
+          if-no-files-found: warn
+          retention-days: 14
+
+      - name: Save FFmpeg source download cache
+        if: ${{ always() && steps.ffmpeg-download-cache.outputs.cache-hit != 'true' }}
+        uses: actions/cache/save@55cc8345863c7cc4c66a329aec7e433d2d1c52a9 # v6
+        with:
+          path: .cache/downloads
+          key: ffmpeg-download-cache-${{ runner.os }}-${{ env.TARGET }}-${{ env.VARIANT }}-${{ hashFiles('download.sh', 'util/dl_functions.sh', 'variants/**', 'scripts.d/**', 'addins/**') }}
+
+      - name: Push win64 Marc Shared image
+        run: |
+          source_image="$TARGET_REPO/win64-marc-shared:source-${{ steps.image-revision.outputs.sha }}"
+          docker tag "$TARGET_REPO/win64-marc-shared:latest" "$source_image"
+          docker push "$TARGET_REPO/win64-marc-shared:latest"
+          docker push "$source_image"
+
+      - name: Trigger Marc Shared FFmpeg release
+        env:
+          GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+          IMAGE_INPUT_SHA: ${{ steps.image-revision.outputs.sha }}
+        run: |
+          jq -n --arg image_input_sha "$IMAGE_INPUT_SHA" \
+            '{event_type:"marc-shared-image-updated",client_payload:{image_input_sha:$image_input_sha}}' |
+          gh api --method POST "repos/${GITHUB_REPOSITORY}/dispatches" --input -

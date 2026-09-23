@@ -24,34 +24,124 @@ FFMPEG_REPO="${FFMPEG_REPO_OVERRIDE:-$FFMPEG_REPO}"
 GIT_BRANCH="${GIT_BRANCH:-master}"
 GIT_BRANCH="${GIT_BRANCH_OVERRIDE:-$GIT_BRANCH}"
 
+RPATH_LDEXEFLAGS=''
+if [[ $TARGET == linux* && $VARIANT == *shared* ]]; then
+    RPATH_LDEXEFLAGS=' -Wl,-rpath,$ORIGIN/../lib'
+fi
+
+CCACHE_ARGS=()
+if [[ -n "${FFBUILD_CCACHE_DIR:-}" ]]; then
+    mkdir -p "$FFBUILD_CCACHE_DIR"
+    CCACHE_ARGS=( -v "$FFBUILD_CCACHE_DIR":/ccache )
+fi
+
 BUILD_SCRIPT="$(mktemp)"
 trap "rm -f -- '$BUILD_SCRIPT'" EXIT
 
-RPATH_LDEXEFLAGS=''
-if [[ $TARGET == linux* && $VARIANT == *shared* ]]; then
-    RPATH_LDEXEFLAGS=' -Wl,-rpath,\\\$\$ORIGIN/../lib'
+cat <<'EOF' >"$BUILD_SCRIPT"
+set -xe
+cd /ffbuild
+rm -rf ffmpeg prefix
+
+if command -v ccache >/dev/null 2>&1 && [[ -d /ccache ]]; then
+    export CCACHE_DIR=/ccache
+    export CCACHE_COMPILERCHECK=content
+    export CCACHE_MAXSIZE="${FFBUILD_CCACHE_MAX_SIZE:-5G}"
+    ccache --set-config=max_size="$CCACHE_MAXSIZE" || true
+    ccache --zero-stats || true
+
+    mkdir -p /tmp/ccache-wrappers
+    ln -sf "$(command -v ccache)" "/tmp/ccache-wrappers/$CC"
+    ln -sf "$(command -v ccache)" "/tmp/ccache-wrappers/$CXX"
+    export PATH="/tmp/ccache-wrappers:$PATH"
 fi
 
-cat <<EOF >"$BUILD_SCRIPT"
-    set -xe
-    cd /ffbuild
-    rm -rf ffmpeg prefix
+git clone --filter=blob:none --branch='__GIT_BRANCH__' '__FFMPEG_REPO__' ffmpeg
+cd ffmpeg
 
-    git clone --filter=blob:none --branch='$GIT_BRANCH' '$FFMPEG_REPO' ffmpeg
-    cd ffmpeg
+# OpenAPV added a metadata-container descriptor argument to oapvm_create() before
+# FFmpeg master adopted the new API. Adapt only when the installed header exposes
+# that signature so older dependency images continue to build unchanged.
+if grep -Eq 'oapvm_create\(oapvm_cdesc_t[[:space:]]*\*cdesc,[[:space:]]*int[[:space:]]*\*err\)' /opt/ffbuild/include/oapv/oapv.h 2>/dev/null; then
+    sed -i 's/oapvm_create(&ret)/oapvm_create(\&(oapvm_cdesc_t){0}, \&ret)/' libavcodec/liboapvenc.c
+fi
 
-    ./configure --prefix=/ffbuild/prefix --pkg-config-flags="--static" \$FFBUILD_TARGET_FLAGS \$FF_CONFIGURE \
-        --extra-cflags="\$FF_CFLAGS" --extra-cxxflags="\$FF_CXXFLAGS" --extra-libs="\$FF_LIBS" \
-        --extra-ldflags="\$FF_LDFLAGS" --extra-ldexeflags="\$FF_LDEXEFLAGS"'$RPATH_LDEXEFLAGS' \
-        --cc="\$CC" --cxx="\$CXX" --ar="\$AR" --ranlib="\$RANLIB" --nm="\$NM" \
-        --extra-version="\$(date +%Y%m%d)" || { cat ffbuild/config.log; exit 1; }
-    make -j\$(nproc) V=1
-    make install install-doc
+# FFmpeg master removed this configure switch while existing dependency images
+# may still inject it. Shaderc remains available to Vulkan consumers through
+# the packaged dependency; only the obsolete FFmpeg configure flag is dropped.
+FF_CONFIGURE="${FF_CONFIGURE//--enable-libshaderc/}"
+
+./configure --prefix=/ffbuild/prefix --pkg-config-flags="--static" $FFBUILD_TARGET_FLAGS $FF_CONFIGURE \
+    --extra-cflags="$FF_CFLAGS" --extra-cxxflags="$FF_CXXFLAGS" --extra-libs="$FF_LIBS" \
+    --extra-ldflags="$FF_LDFLAGS" --extra-ldexeflags="$FF_LDEXEFLAGS$RPATH_LDEXEFLAGS" \
+    --cc="$CC" --cxx="$CXX" --ar="$AR" --ranlib="$RANLIB" --nm="$NM" \
+    --extra-version="$(date +%Y%m%d)" || { cat ffbuild/config.log; exit 1; }
+make -j$(nproc) V=1
+make install install-doc
+
+copy_runtime_dlls() {
+    local exe_dir="/ffbuild/prefix/bin"
+    local required_tmp
+    local missing=0
+
+    required_tmp="$(mktemp)"
+    trap 'rm -f "$required_tmp"' RETURN
+
+    for binary in "$exe_dir"/*.exe "$exe_dir"/*.dll; do
+        [[ -f "$binary" ]] || continue
+        echo "Inspecting runtime DLL imports for $(basename "$binary")"
+        x86_64-w64-mingw32-objdump -p "$binary" |
+            awk '/DLL Name:/ { print tolower($3) }' >> "$required_tmp" || true
+    done
+
+    while IFS= read -r dll; do
+        [[ -n "$dll" ]] || continue
+
+        case "$dll" in
+            avcodec-*.dll|avdevice-*.dll|avfilter-*.dll|avformat-*.dll|avutil-*.dll|postproc-*.dll|swresample-*.dll|swscale-*.dll)
+                continue
+                ;;
+            api-ms-*.dll|ext-ms-*.dll|ucrtbase.dll)
+                continue
+                ;;
+            advapi32.dll|avicap32.dll|avrt.dll|bcrypt.dll|bcryptprimitives.dll|cfgmgr32.dll|crypt32.dll|d2d1.dll|d3d11.dll|d3d12.dll|dcomp.dll|dnsapi.dll|dwmapi.dll|dxgi.dll|dxva2.dll|dwrite.dll|gdi32.dll|imm32.dll|iphlpapi.dll|kernel32.dll|mfplat.dll|mfreadwrite.dll|mfuuid.dll|msimg32.dll|msvcrt.dll|ncrypt.dll|normaliz.dll|ntdll.dll|ole32.dll|oleaut32.dll|opengl32.dll|rpcrt4.dll|secur32.dll|setupapi.dll|shell32.dll|shlwapi.dll|strmiids.dll|user32.dll|userenv.dll|usp10.dll|uuid.dll|version.dll|vfw32.dll|winmm.dll|ws2_32.dll)
+                continue
+                ;;
+        esac
+
+        if [[ -f "$exe_dir/$dll" ]]; then
+            continue
+        fi
+
+        runtime_src="$(find /opt/ffbuild /usr/x86_64-w64-mingw32 -iname "$dll" -type f -print -quit 2>/dev/null || true)"
+        if [[ -n "$runtime_src" ]]; then
+            echo "Copying dependency runtime DLL $runtime_src into FFmpeg package bin"
+            cp -av "$runtime_src" "$exe_dir/$(basename "$runtime_src")"
+            continue
+        fi
+
+        echo "Missing runtime DLL required by packaged FFmpeg binaries: $dll"
+        missing=1
+    done < <(sort -u "$required_tmp")
+
+    return "$missing"
+}
+
+copy_runtime_dlls
+
+if command -v ccache >/dev/null 2>&1 && [[ -d /ccache ]]; then
+    ccache --show-stats || true
+fi
 EOF
+
+sed -i \
+    -e "s|__GIT_BRANCH__|$GIT_BRANCH|g" \
+    -e "s|__FFMPEG_REPO__|$FFMPEG_REPO|g" \
+    "$BUILD_SCRIPT"
 
 [[ -t 1 ]] && TTY_ARG="-t" || TTY_ARG=""
 
-docker run --rm -i $TTY_ARG "${UIDARGS[@]}" -v "$PWD/ffbuild":/ffbuild -v "$BUILD_SCRIPT":/build.sh "$IMAGE" bash /build.sh
+docker run --rm -i $TTY_ARG "${UIDARGS[@]}" "${CCACHE_ARGS[@]}" -e "RPATH_LDEXEFLAGS=$RPATH_LDEXEFLAGS" -v "$PWD/ffbuild":/ffbuild -v "$BUILD_SCRIPT":/build.sh "$IMAGE" bash /build.sh
 
 if [[ -n "$FFBUILD_OUTPUT_DIR" ]]; then
     mkdir -p "$FFBUILD_OUTPUT_DIR"

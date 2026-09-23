@@ -1,6 +1,5 @@
 ARG GH_REPO=ghcr.io/btbn/ffmpeg-builds
-ARG BASE_TAG_SUFFIX=
-FROM $GH_REPO/base:latest${BASE_TAG_SUFFIX}
+FROM $GH_REPO/base:latest
 
 RUN \
     git clone --filter=blob:none https://github.com/mstorsjo/llvm-mingw /llvm-mingw && cd /llvm-mingw && \

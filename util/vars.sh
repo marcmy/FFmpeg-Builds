@@ -34,7 +34,7 @@ REPO="${GITHUB_REPOSITORY:-btbn/ffmpeg-builds}"
 REPO="${REPO,,}"
 REGISTRY="${REGISTRY_OVERRIDE:-ghcr.io}"
 BASE_IMAGE="${REGISTRY}/${REPO}/base:latest"
-TARGET_IMAGE="${REGISTRY}/${REPO}/base-${TARGET}:latest"
+TARGET_IMAGE="${FFBUILD_TARGET_IMAGE:-${REGISTRY}/${REPO}/base-${TARGET}:latest}"
 IMAGE="${REGISTRY}/${REPO}/${TARGET}-${VARIANT}${ADDINS_STR:+-}${ADDINS_STR}:latest"
 
 ffbuild_ffver() {
@@ -68,9 +68,6 @@ ffbuild_ffver() {
         ;;
     *8.1*)
         echo 801
-        ;;
-    *9.0*)
-        echo 900
         ;;
     *)
         echo 99999999

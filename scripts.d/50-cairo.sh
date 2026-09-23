@@ -1,0 +1,87 @@
+#!/bin/bash
+
+SCRIPT_REPO="https://gitlab.freedesktop.org/cairo/cairo.git"
+SCRIPT_COMMIT="master"
+
+ffbuild_depends() {
+    echo base
+    echo pixman
+    echo zlib
+    echo libpng
+    echo glib2
+}
+
+ffbuild_enabled() {
+    [[ $VARIANT == *marc-shared* ]] || return -1
+    return 0
+}
+
+ffbuild_dockerbuild() {
+    local myconf=(
+        --prefix="$FFBUILD_PREFIX"
+        --buildtype=release
+        --default-library=static
+    )
+
+    add_meson_option() {
+        local name="$1"
+        local value="$2"
+        local options_file
+
+        for options_file in meson.options meson_options.txt; do
+            if [[ -f "$options_file" ]] && grep -Eq "option\(['\"]${name}['\"]" "$options_file"; then
+                myconf+=("-D${name}=${value}")
+                return 0
+            fi
+        done
+    }
+
+    add_meson_option tests disabled
+    add_meson_option perf_tests disabled
+    add_meson_option perf-tests disabled
+    add_meson_option spectre disabled
+    add_meson_option symbol-lookup disabled
+    add_meson_option png enabled
+    add_meson_option xlib disabled
+    add_meson_option xcb disabled
+    add_meson_option quartz disabled
+    add_meson_option gtk_doc false
+    add_meson_option gtk-doc false
+
+    if [[ $TARGET == win* || $TARGET == linux* ]]; then
+        myconf+=(--cross-file=/cross.meson)
+    else
+        echo "Unknown target"
+        return -1
+    fi
+
+    rm -rf ffbuild-build
+    meson setup ffbuild-build "${myconf[@]}"
+    ninja -C ffbuild-build -j$(nproc)
+    DESTDIR="$FFBUILD_DESTDIR" ninja -C ffbuild-build install
+
+    if [[ -f "$FFBUILD_DESTDIR$FFBUILD_PREFIX/lib/pkgconfig/cairo.pc" ]]; then
+        sed -i 's/^Cflags:.*/Cflags: -DCAIRO_WIN32_STATIC_BUILD -I${includedir}\/cairo/' "$FFBUILD_DESTDIR$FFBUILD_PREFIX/lib/pkgconfig/cairo.pc"
+        if grep -q '^Libs.private:' "$FFBUILD_DESTDIR$FFBUILD_PREFIX/lib/pkgconfig/cairo.pc"; then
+            sed -i 's/^Libs.private:.*/& -lole32/' "$FFBUILD_DESTDIR$FFBUILD_PREFIX/lib/pkgconfig/cairo.pc"
+        else
+            echo 'Libs.private: -lole32' >> "$FFBUILD_DESTDIR$FFBUILD_PREFIX/lib/pkgconfig/cairo.pc"
+        fi
+    fi
+}
+
+ffbuild_configure() {
+    echo --enable-cairo
+}
+
+ffbuild_cflags() {
+    echo -DCAIRO_WIN32_STATIC_BUILD
+}
+
+ffbuild_libs() {
+    echo -lole32
+}
+
+ffbuild_unconfigure() {
+    echo --disable-cairo
+}

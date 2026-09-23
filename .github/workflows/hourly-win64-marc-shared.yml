@@ -1,0 +1,397 @@
+name: Marc Shared FFmpeg Release
+
+on:
+  workflow_dispatch:
+  repository_dispatch:
+    types:
+      - marc-shared-image-updated
+  schedule:
+    - cron: "23 */4 * * *"
+
+permissions:
+  actions: write
+  contents: write
+  packages: read
+
+env:
+  UPSTREAM_REPO: https://github.com/FFmpeg/FFmpeg.git
+  TARGET_REPO: ghcr.io/marcmy/ffmpeg-builds
+  TARGET: win64
+  VARIANT: marc-shared
+  FFMPEG_REPO_OVERRIDE: https://github.com/FFmpeg/FFmpeg.git
+  GIT_BRANCH_OVERRIDE: master
+  FORCE_JAVASCRIPT_ACTIONS_TO_NODE24: true
+  FFBUILD_CCACHE_DIR: ${{ github.workspace }}/.cache/ccache
+  FFBUILD_CCACHE_MAX_SIZE: 5G
+  MARC_SHARED_RELEASES_TO_KEEP: 5
+
+concurrency:
+  group: marc-shared-ffmpeg-release
+  cancel-in-progress: false
+
+jobs:
+  build:
+    runs-on: ubuntu-latest
+    environment: scoop-bucket
+    timeout-minutes: 360
+
+    steps:
+      - name: Free disk space
+        run: |
+          df -h
+          sudo apt-get clean
+          docker system prune -a -f
+          sudo rm -rf /opt/ghc /usr/local/.ghcup /usr/local/lib/android
+          df -h
+
+      - name: Checkout
+        uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7
+        with:
+          fetch-depth: 0
+          persist-credentials: false
+
+      - name: Restore FFmpeg ccache
+        id: ffmpeg-ccache
+        uses: actions/cache/restore@55cc8345863c7cc4c66a329aec7e433d2d1c52a9 # v6
+        with:
+          path: .cache/ccache
+          key: ffmpeg-ccache-${{ runner.os }}-${{ env.TARGET }}-${{ env.VARIANT }}-${{ github.run_id }}
+          restore-keys: |
+            ffmpeg-ccache-${{ runner.os }}-${{ env.TARGET }}-${{ env.VARIANT }}-
+
+      - name: Login to GHCR
+        uses: docker/login-action@dbcb813823bdd20940b903addbd779551569679f # v4.6.0
+        with:
+          registry: ghcr.io
+          username: ${{ github.actor }}
+          password: ${{ github.token }}
+
+      - name: Build, release, and update scoop manifest
+        env:
+          GH_TOKEN: ${{ github.token }}
+          SCOOP_BUCKET_TOKEN: ${{ secrets.SCOOP_BUCKET_TOKEN }}
+        run: |
+          mkdir -p logs
+          set +e
+          {
+            set -euo pipefail
+
+            echo "=== Marc Shared FFmpeg release build ==="
+            echo "Run ID: ${GITHUB_RUN_ID}"
+            echo "Run attempt: ${GITHUB_RUN_ATTEMPT}"
+            echo "Repository SHA: ${GITHUB_SHA}"
+            echo "UTC start: $(date -u +'%Y-%m-%dT%H:%M:%SZ')"
+            echo
+
+            resolve_image_input_sha() {
+              local payload_sha=""
+
+              if [[ "$GITHUB_EVENT_NAME" == "repository_dispatch" ]]; then
+                payload_sha="$(jq -r '.client_payload.image_input_sha // empty' "$GITHUB_EVENT_PATH")"
+                if [[ -n "$payload_sha" ]]; then
+                  printf '%s\n' "$payload_sha"
+                  return 0
+                fi
+              fi
+
+              git log -1 --format=%H -- \
+                .github/buildkit.toml \
+                .github/workflows/build-win64-marc-shared-image.yml \
+                addins \
+                images \
+                patches \
+                scripts.d \
+                util \
+                variants \
+                download.sh \
+                generate.sh \
+                makeimage.sh
+            }
+
+            image_input_sha="$(resolve_image_input_sha)"
+            if [[ -z "$image_input_sha" ]]; then
+              echo "Unable to resolve the dependency image input revision."
+              exit 1
+            fi
+            image_ref="${TARGET_REPO}/win64-marc-shared:source-${image_input_sha}"
+
+            ffmpeg_sha="$(git ls-remote "$UPSTREAM_REPO" refs/heads/master | awk '{print $1}')"
+            ffmpeg_short="${ffmpeg_sha:0:12}"
+            package_version="$(date -u +'%Y%m%d.%H%M%S')"
+            release_tag="ffmpeg-${package_version}-win64-marc-shared"
+            zip_name="ffmpeg-${package_version}-win64-marc-shared.zip"
+            release_created=0
+            release_safe_to_keep=0
+
+            rollback_incomplete_release() {
+              local status="$?"
+              trap - EXIT
+
+              if (( status != 0 && release_created == 1 && release_safe_to_keep == 0 )); then
+                echo "Workflow failed after creating ${release_tag}; deleting incomplete release and tag."
+                gh release delete "$release_tag" \
+                  --repo "$GITHUB_REPOSITORY" \
+                  --cleanup-tag \
+                  --yes || echo "Failed to delete incomplete release ${release_tag}; manual cleanup may be needed."
+              fi
+
+              exit "$status"
+            }
+            trap rollback_incomplete_release EXIT
+
+            echo "Upstream FFmpeg master SHA: ${ffmpeg_sha}"
+            echo "Dependency image input SHA: ${image_input_sha}"
+            echo "Dependency image: ${image_ref}"
+            echo "Package version: ${package_version}"
+            echo "Release tag: ${release_tag}"
+
+            if [[ "$GITHUB_EVENT_NAME" == "schedule" ]]; then
+              latest_body="$(gh release view --repo "$GITHUB_REPOSITORY" --json body -q .body 2>/dev/null || true)"
+              if grep -Fq "Upstream FFmpeg master SHA: ${ffmpeg_sha}" <<< "$latest_body" && \
+                 grep -Fq "Builder repository SHA: ${GITHUB_SHA}" <<< "$latest_body" && \
+                 grep -Fq "Dependency image input SHA: ${image_input_sha}" <<< "$latest_body" && \
+                 grep -Fq "Scoop manifest updated: yes" <<< "$latest_body"; then
+                echo "Latest release already contains upstream SHA ${ffmpeg_sha}, builder SHA ${GITHUB_SHA}, dependency image ${image_input_sha}, and a completed Scoop update; skipping scheduled build."
+                exit 0
+              fi
+            fi
+
+            if ! docker pull "$image_ref"; then
+              if [[ "$GITHUB_EVENT_NAME" == "schedule" ]]; then
+                echo "Matching dependency image ${image_ref} is not ready; skipping this scheduled release instead of using stale :latest."
+                exit 0
+              fi
+
+              echo "Matching dependency image ${image_ref} is unavailable. Refusing to build against stale :latest."
+              exit 1
+            fi
+
+            docker tag "$image_ref" "${TARGET_REPO}/win64-marc-shared:latest"
+
+            retry_command() {
+              local max_attempts="$1"
+              shift
+              local attempt=1
+              local delay=10
+              local status=1
+
+              while (( attempt <= max_attempts )); do
+                if "$@"; then
+                  return 0
+                else
+                  status=$?
+                fi
+
+                if (( attempt == max_attempts )); then
+                  echo "Command failed after ${attempt} attempts (exit ${status}): $*" >&2
+                  return "$status"
+                fi
+
+                echo "::warning::Command failed (attempt ${attempt}/${max_attempts}, exit ${status}); retrying in ${delay}s: $*"
+                sleep "$delay"
+                attempt=$((attempt + 1))
+                delay=$((delay * 2))
+              done
+            }
+
+            ensure_draft_release() {
+              local max_attempts=5
+              local attempt=1
+              local delay=10
+              local status=1
+
+              while (( attempt <= max_attempts )); do
+                if gh release view "$release_tag" --repo "$GITHUB_REPOSITORY" >/dev/null 2>&1; then
+                  echo "Release ${release_tag} already exists; continuing with asset upload."
+                  return 0
+                fi
+
+                echo "Creating draft release ${release_tag} (attempt ${attempt}/${max_attempts})."
+                if gh release create "$release_tag" \
+                  --repo "$GITHUB_REPOSITORY" \
+                  --title "FFmpeg win64 Marc Shared ${package_version}" \
+                  --notes-file release/release-notes.md \
+                  --draft; then
+                  return 0
+                else
+                  status=$?
+                fi
+
+                if (( attempt == max_attempts )); then
+                  echo "Unable to create draft release ${release_tag} after ${attempt} attempts." >&2
+                  return "$status"
+                fi
+
+                echo "::warning::Draft release creation failed (attempt ${attempt}/${max_attempts}, exit ${status}); retrying in ${delay}s."
+                sleep "$delay"
+                attempt=$((attempt + 1))
+                delay=$((delay * 2))
+              done
+            }
+
+            cleanup_old_releases() {
+              local keep="${MARC_SHARED_RELEASES_TO_KEEP:-5}"
+              local index=0
+
+              echo "Keeping latest ${keep} Marc Shared releases; deleting older ones."
+
+              gh api --paginate "repos/${GITHUB_REPOSITORY}/releases?per_page=100" \
+                --jq '.[] | select(.tag_name | test("^ffmpeg-[0-9]{8}\\.[0-9]{6}-win64-(marc-shared)$")) | .tag_name' |
+              while IFS= read -r tag; do
+                index=$((index + 1))
+
+                if (( index <= keep )); then
+                  echo "Keeping Marc Shared release ${tag}"
+                  continue
+                fi
+
+                echo "Deleting old Marc Shared release ${tag}"
+                gh release delete "$tag" \
+                  --repo "$GITHUB_REPOSITORY" \
+                  --cleanup-tag \
+                  --yes
+              done
+            }
+
+            ./build.sh "$TARGET" "$VARIANT"
+
+            mkdir release
+            cp artifacts/*.zip "release/${zip_name}"
+            sha256sum "release/${zip_name}" > release/checksums.sha256
+
+            write_release_notes() {
+              printf 'Upstream FFmpeg master SHA: %s\nUpstream FFmpeg short SHA: %s\nBuilder repository SHA: %s\nDependency image input SHA: %s\nScoop manifest updated: %s\n' \
+                "$ffmpeg_sha" "$ffmpeg_short" "$GITHUB_SHA" "$image_input_sha" "$1" > release/release-notes.md
+            }
+
+            write_release_notes pending
+
+            ensure_draft_release
+            release_created=1
+
+            retry_command 5 gh release upload "$release_tag" \
+              "release/${zip_name}" \
+              "release/checksums.sha256" \
+              --repo "$GITHUB_REPOSITORY" \
+              --clobber
+
+            retry_command 5 gh release edit "$release_tag" \
+              --repo "$GITHUB_REPOSITORY" \
+              --draft=false \
+              --latest
+
+            if [[ -z "${SCOOP_BUCKET_TOKEN:-}" ]]; then
+              echo "SCOOP_BUCKET_TOKEN is not set; skipping scoop manifest update."
+              exit 0
+            fi
+
+            zip_hash="$(sha256sum "release/${zip_name}" | awk '{print $1}')"
+            zip_url="https://github.com/marcmy/FFmpeg-Builds/releases/download/${release_tag}/${zip_name}"
+
+            export PACKAGE_VERSION="$package_version"
+            export ZIP_HASH="$zip_hash"
+            export ZIP_URL="$zip_url"
+
+            git clone https://github.com/marcmy/scoop-bucket.git scoop-bucket
+            python3 .github/scripts/update-scoop-manifest.py \
+              scoop-bucket/bucket/ffmpeg-marc-shared.json
+
+            cd scoop-bucket
+            git config user.name "github-actions[bot]"
+            git config user.email "41898282+github-actions[bot]@users.noreply.github.com"
+            git add bucket/ffmpeg-marc-shared.json
+
+            if git diff --cached --quiet; then
+              echo "Scoop manifest already up to date."
+            else
+              git commit -m "Update ffmpeg-marc-shared to ${package_version}"
+              auth_user="x-access-token"
+              git remote set-url origin "https://${auth_user}:${SCOOP_BUCKET_TOKEN}@github.com/marcmy/scoop-bucket.git"
+              git push origin HEAD:master
+            fi
+
+            cd ..
+            release_safe_to_keep=1
+            write_release_notes yes
+            retry_command 5 gh release edit "$release_tag" \
+              --repo "$GITHUB_REPOSITORY" \
+              --notes-file release/release-notes.md \
+              --latest
+
+            cleanup_old_releases
+          } 2>&1 | tee logs/build-release-win64-marc-shared.log
+          status=${PIPESTATUS[0]}
+          echo "$status" > logs/build-release-win64-marc-shared.status
+          exit 0
+
+      - name: Upload Marc Shared release build log
+        if: ${{ always() }}
+        uses: actions/upload-artifact@043fb46d1a93c77aae656e7c1c64a875d1fc6a0a # v7.0.1
+        with:
+          name: marc-shared-release-build-log-${{ github.run_id }}-${{ github.run_attempt }}
+          path: |
+            logs/build-release-win64-marc-shared.log
+            logs/build-release-win64-marc-shared.status
+          if-no-files-found: warn
+          retention-days: 30
+
+      - name: Save FFmpeg ccache
+        if: ${{ always() }}
+        uses: actions/cache/save@55cc8345863c7cc4c66a329aec7e433d2d1c52a9 # v6
+        with:
+          path: .cache/ccache
+          key: ${{ steps.ffmpeg-ccache.outputs.cache-primary-key }}
+
+      - name: Prune old FFmpeg Actions caches
+        if: ${{ always() }}
+        continue-on-error: true
+        env:
+          GH_TOKEN: ${{ github.token }}
+        run: |
+          set -euo pipefail
+
+          prune_prefix() {
+            local prefix="$1"
+            local keep="$2"
+            local seen=0
+
+            echo "Pruning prefix '${prefix}', keeping ${keep}."
+
+            gh api \
+              "repos/${GITHUB_REPOSITORY}/actions/caches?per_page=100&sort=last_accessed_at&direction=desc&key=${prefix}" \
+              --jq '.actions_caches[] | [.id, .key, .last_accessed_at, .size_in_bytes] | @tsv' |
+            while IFS=$'\t' read -r cache_id cache_key last_accessed_at size_in_bytes; do
+              seen=$((seen + 1))
+
+              if (( seen <= keep )); then
+                echo "Keeping ${cache_key} (${size_in_bytes} bytes): newest ${seen}/${keep}."
+                continue
+              fi
+
+              echo "Deleting ${cache_key} (${size_in_bytes} bytes), cache id ${cache_id}; last accessed ${last_accessed_at}."
+              gh api \
+                -X DELETE \
+                "repos/${GITHUB_REPOSITORY}/actions/caches/${cache_id}" \
+                --silent
+            done
+          }
+
+          prune_prefix "ffmpeg-download-cache-${RUNNER_OS}-${TARGET}-${VARIANT}-" 1
+          prune_prefix "ffmpeg-ccache-${RUNNER_OS}-${TARGET}-${VARIANT}-" 1
+
+      - name: Fail if Marc Shared release build failed
+        if: ${{ always() }}
+        run: |
+          status=1
+          if [[ -f logs/build-release-win64-marc-shared.status ]]; then
+            status="$(cat logs/build-release-win64-marc-shared.status)"
+          else
+            echo "Build status file missing; treating release build as failed."
+          fi
+
+          if [[ "$status" != "0" ]]; then
+            echo "Marc Shared release build failed with exit status ${status}."
+            exit "$status"
+          fi
+
+          echo "Marc Shared release build succeeded."

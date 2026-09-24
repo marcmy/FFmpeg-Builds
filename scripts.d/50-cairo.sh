@@ -9,6 +9,7 @@ ffbuild_depends() {
     echo zlib
     echo libpng
     echo glib2
+    echo fonts
 }
 
 ffbuild_enabled() {
@@ -29,7 +30,7 @@ ffbuild_dockerbuild() {
         local options_file
 
         for options_file in meson.options meson_options.txt; do
-            if [[ -f "$options_file" ]] && grep -Eq "option\(['\"]${name}['\"]" "$options_file"; then
+            if [[ -f "$options_file" ]] && grep -Eq "option\\(['\"]${name}['\"]" "$options_file"; then
                 myconf+=("-D${name}=${value}")
                 return 0
             fi
@@ -42,6 +43,8 @@ ffbuild_dockerbuild() {
     add_meson_option spectre disabled
     add_meson_option symbol-lookup disabled
     add_meson_option png enabled
+    add_meson_option freetype enabled
+    add_meson_option fontconfig enabled
     add_meson_option xlib disabled
     add_meson_option xcb disabled
     add_meson_option quartz disabled

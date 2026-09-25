@@ -63,9 +63,11 @@ jobs:
           set -euo pipefail
           if git diff --quiet "${{ github.event.pull_request.base.sha }}" HEAD -- images/base images/base-win64; then
             echo "changed=false" >> "$GITHUB_OUTPUT"
+            echo "QUICKBUILD=1" >> "$GITHUB_ENV"
             echo "Base-image inputs are unchanged; reusing the registry base."
           else
             echo "changed=true" >> "$GITHUB_OUTPUT"
+            echo "QUICKBUILD=" >> "$GITHUB_ENV"
             echo "Base-image inputs changed; rebuilding them from this PR."
           fi
 
@@ -93,10 +95,6 @@ jobs:
 
       - name: Build Marc Shared dependency image
         env:
-          # QUICKBUILD skips base/base-win64 and reuses the registry image. When
-          # either base input changes, leave it empty so makeimage.sh rebuilds
-          # those layers from this PR before building the dependency image.
-          QUICKBUILD: ${{ steps.base-image-changes.outputs.changed == 'true' && '' || '1' }}
           NOCLEAN: 1
           FFBUILD_LOCAL_FINAL_CACHE: 0
           FFBUILD_DOCKER_CACHE_FROM: type=registry,ref=ghcr.io/marcmy/ffmpeg-builds/win64-marc-shared:buildcache

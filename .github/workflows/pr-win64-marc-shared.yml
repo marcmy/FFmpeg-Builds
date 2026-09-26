@@ -9,6 +9,8 @@ on:
       - .github/marc-shared-required-features.json
       - .github/scripts/test-marc-shared-release.ps1
       - addins/**
+      - images/base/**
+      - images/base-win64/**
       - patches/**
       - scripts.d/**
       - util/**
@@ -51,7 +53,23 @@ jobs:
       - name: Checkout
         uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7
         with:
+          fetch-depth: 0
           persist-credentials: false
+
+      - name: Detect base-image changes
+        id: base-image-changes
+        shell: bash
+        run: |
+          set -euo pipefail
+          if git diff --quiet "${{ github.event.pull_request.base.sha }}" HEAD -- images/base images/base-win64; then
+            echo "changed=false" >> "$GITHUB_OUTPUT"
+            echo "QUICKBUILD=1" >> "$GITHUB_ENV"
+            echo "Base-image inputs are unchanged; reusing the registry base."
+          else
+            echo "changed=true" >> "$GITHUB_OUTPUT"
+            echo "QUICKBUILD=" >> "$GITHUB_ENV"
+            echo "Base-image inputs changed; rebuilding them from this PR."
+          fi
 
       - name: Restore FFmpeg source download cache
         id: ffmpeg-download-cache
@@ -77,7 +95,6 @@ jobs:
 
       - name: Build Marc Shared dependency image
         env:
-          QUICKBUILD: 1
           NOCLEAN: 1
           FFBUILD_LOCAL_FINAL_CACHE: 0
           FFBUILD_DOCKER_CACHE_FROM: type=registry,ref=ghcr.io/marcmy/ffmpeg-builds/win64-marc-shared:buildcache

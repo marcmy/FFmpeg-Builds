@@ -1,0 +1,121 @@
+name: Sync upstream
+
+on:
+  workflow_dispatch:
+  schedule:
+    - cron: "29 */6 * * *"
+  push:
+    branches:
+      - master
+    paths:
+      - .github/workflows/sync-upstream.yml
+
+permissions:
+  contents: write
+
+concurrency:
+  group: sync-upstream
+  cancel-in-progress: false
+
+jobs:
+  sync:
+    runs-on: ubuntu-24.04
+    timeout-minutes: 20
+
+    steps:
+      - name: Check out fork branch
+        uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+        with:
+          ref: master
+          fetch-depth: 0
+          token: ${{ github.token }}
+          persist-credentials: true
+
+      - name: Merge upstream conservatively
+        shell: bash
+        run: |
+          set -euo pipefail
+          git config user.name "github-actions[bot]"
+          git config user.email "41898282+github-actions[bot]@users.noreply.github.com"
+          git config merge.conflictStyle merge
+          git remote add upstream https://github.com/BtbN/FFmpeg-Builds.git
+          git fetch --prune --no-tags upstream master
+
+          original_head="$(git rev-parse HEAD)"
+          upstream_sha="$(git rev-parse upstream/master)"
+
+          if git merge-base --is-ancestor upstream/master HEAD; then
+            echo "Fork already contains current upstream master."
+            exit 0
+          fi
+
+          merge_status=0
+          git merge --no-commit --no-ff upstream/master || merge_status=$?
+
+          # Keep the fork's workflow layer unchanged.
+          git rm -r -f --ignore-unmatch .github/workflows
+          if git cat-file -e "$original_head:.github/workflows" 2>/dev/null; then
+            git checkout "$original_head" -- .github/workflows
+          fi
+
+          # Keep Git's non-conflicting merge result. Inside any remaining text
+          # conflict hunk, prefer the fork side only. For binary or delete/modify
+          # conflicts, conservatively preserve the fork side.
+          while IFS= read -r -d '' path; do
+            ours=0
+            theirs=0
+            git cat-file -e ":2:$path" 2>/dev/null && ours=1 || true
+            git cat-file -e ":3:$path" 2>/dev/null && theirs=1 || true
+
+            if [[ "$ours" -eq 1 && "$theirs" -eq 1 ]]; then
+              is_binary=0
+              if git show ":2:$path" | python3 -c 'import sys; raise SystemExit(0 if b"\\0" in sys.stdin.buffer.read() else 1)'; then
+                is_binary=1
+              fi
+              if [[ "$is_binary" -eq 0 ]] && git show ":3:$path" | python3 -c 'import sys; raise SystemExit(0 if b"\\0" in sys.stdin.buffer.read() else 1)'; then
+                is_binary=1
+              fi
+
+              if [[ "$is_binary" -eq 1 ]]; then
+                echo "Binary conflict; preserving fork file: $path"
+                git checkout --ours -- "$path"
+                git add -- "$path"
+                continue
+              fi
+
+              git checkout --conflict=merge -- "$path"
+              tmp="$(mktemp)"
+              awk '
+                /^<<<<<<< / { in_conflict=1; keep=1; found=1; next }
+                in_conflict && /^=======$/ { keep=0; next }
+                in_conflict && /^>>>>>>> / { in_conflict=0; keep=1; next }
+                !in_conflict || keep { print }
+                END { if (!found) exit 2 }
+              ' "$path" > "$tmp"
+              mv "$tmp" "$path"
+              git add -- "$path"
+            elif [[ "$ours" -eq 1 ]]; then
+              echo "Delete/modify conflict; preserving fork file: $path"
+              git checkout --ours -- "$path"
+              git add -- "$path"
+            else
+              echo "Fork deleted conflicted path; preserving fork deletion: $path"
+              git rm -f --ignore-unmatch -- "$path"
+            fi
+          done < <(git diff --name-only --diff-filter=U -z)
+
+          unresolved="$(git diff --name-only --diff-filter=U)"
+          if [[ -n "$unresolved" ]]; then
+            echo "::error::Unresolved merge conflicts remain:"
+            printf '%s\n' "$unresolved"
+            exit 1
+          fi
+
+          if [[ "$merge_status" -ne 0 ]] && ! git rev-parse -q --verify MERGE_HEAD >/dev/null; then
+            echo "::error::git merge failed without a resolvable merge state."
+            exit "$merge_status"
+          fi
+
+          git commit -m "Merge upstream BtbN/FFmpeg-Builds master"
+          git push origin HEAD:refs/heads/master
+          echo "Merged upstream $upstream_sha."

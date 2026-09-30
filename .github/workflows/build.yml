@@ -20,6 +20,10 @@ on:
   schedule:
     - cron: '0 12 * * *'
 
+permissions:
+  actions: read
+  contents: read
+
 env:
   DOCKER_BUILDKIT: 1
 
@@ -47,6 +51,9 @@ jobs:
           exit 0
   build_base:
     name: Build base image
+    permissions:
+      contents: read
+      packages: write
     if: ${{ github.event.inputs.buildOnly != 'true' }}
     needs: pre_check
     strategy:
@@ -131,6 +138,9 @@ jobs:
           untagged_only: true
   build_target_bases:
     name: Build target base image
+    permissions:
+      contents: read
+      packages: write
     if: ${{ github.event.inputs.buildOnly != 'true' }}
     needs: build_base
     runs-on: ${{ matrix.runner || 'ubuntu-latest' }}
@@ -202,6 +212,9 @@ jobs:
           untagged_only: true
   build_targets:
     name: Build target-variant image
+    permissions:
+      contents: read
+      packages: write
     if: ${{ github.event.inputs.buildOnly != 'true' }}
     needs: build_target_bases
     runs-on: ${{ matrix.runner || 'ubuntu-latest' }}
@@ -301,6 +314,9 @@ jobs:
           untagged_only: true
   build_ffmpeg:
     name: Build ffmpeg
+    permissions:
+      contents: read
+      packages: read
     if: ${{ ( github.event.inputs.buildOnly == 'true' && !cancelled() ) || success() }}
     needs: build_targets
     runs-on: ubuntu-latest
@@ -337,6 +353,9 @@ jobs:
           path: artifacts/*
   publish_release:
     name: Publish release
+    permissions:
+      actions: read
+      contents: write
     if: ${{ !cancelled() && ( github.event_name == 'schedule' || github.event.inputs.doRelease == 'true' ) && needs.build_ffmpeg.result == 'success' }}
     needs: build_ffmpeg
     runs-on: ubuntu-latest

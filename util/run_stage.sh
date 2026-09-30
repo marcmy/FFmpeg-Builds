@@ -57,7 +57,7 @@ if [[ "$SELF" == */??-*/??-*.sh && -d "$FFBUILD_DESTDIR" ]]; then
     cp -al "$FFBUILD_DESTDIR"/. /
 fi
 
-rm -rf "$FFBUILD_DESTPREFIX"/bin "${WINEPREFIX:-$HOME/.wine}"
+rm -rf "$FFBUILD_DESTPREFIX"/bin
 
 if [[ -n "$STAGENAME" ]]; then
     rm -rf "/$STAGENAME"

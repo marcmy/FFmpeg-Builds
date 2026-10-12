@@ -136,7 +136,7 @@ export TODF="Dockerfile"
 BASELAYER="base-layer"
 to_df "FROM ${REGISTRY}/${REPO}/base-${TARGET}:latest AS ${BASELAYER}"
 to_df "ENV TARGET=$TARGET VARIANT=$VARIANT REPO=$REPO ADDINS_STR=$ADDINS_STR FFVER=$(ffbuild_ffver)"
-to_df "COPY --link util/run_stage.sh /usr/bin/run_stage"
+to_df "COPY --link --chmod=755 util/run_stage.sh /usr/bin/run_stage"
 
 for addin in "${ADDINS[@]}"; do
 (

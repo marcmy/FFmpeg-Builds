@@ -1,6 +1,10 @@
 name: Build win64 Marc Shared FFmpeg image
 
 on:
+  # Upstream sync pushes use GITHUB_TOKEN and cannot trigger push workflows.
+  # Independently check image freshness so scheduled FFmpeg releases cannot stall.
+  schedule:
+    - cron: "47 1,7,13,19 * * *"
   workflow_dispatch:
     inputs:
       refresh_base_images:
@@ -38,7 +42,7 @@ env:
 
 concurrency:
   group: marc-shared-image-${{ github.ref }}
-  cancel-in-progress: true
+  cancel-in-progress: false
 
 jobs:
   build-image:
@@ -130,7 +134,25 @@ jobs:
           username: ${{ github.actor }}
           password: ${{ github.token }}
 
+      - name: Check whether exact dependency image already exists
+        id: image_presence
+        env:
+          IMAGE_INPUT_SHA: ${{ steps.image-revision.outputs.sha }}
+        shell: bash
+        run: |
+          set -euo pipefail
+          image_ref="${TARGET_REPO}/win64-marc-shared:source-${IMAGE_INPUT_SHA}"
+          if [[ "${GITHUB_EVENT_NAME}" == "schedule" ]] &&
+             docker buildx imagetools inspect "${image_ref}" >/dev/null 2>&1; then
+            echo "needs_build=false" >> "${GITHUB_OUTPUT}"
+            echo "::notice::Dependency image already published: ${image_ref}; skipping scheduled rebuild."
+          else
+            echo "needs_build=true" >> "${GITHUB_OUTPUT}"
+            echo "Dependency image needs publishing: ${image_ref}"
+          fi
+
       - name: Ensure stable base images for the source revisions
+        if: steps.image_presence.outputs.needs_build == 'true'
         env:
           BASE_INPUT_SHA: ${{ steps.image-revision.outputs.base_sha }}
           TARGET_BASE_INPUT_SHA: ${{ steps.image-revision.outputs.target_base_sha }}
@@ -204,6 +226,7 @@ jobs:
           echo "Pinned target base source: $target_base_ref"
 
       - name: Inspect registry build cache
+        if: steps.image_presence.outputs.needs_build == 'true'
         run: |
           cache_ref="$TARGET_REPO/win64-marc-shared:buildcache"
           if docker buildx imagetools inspect "$cache_ref"; then
@@ -213,6 +236,7 @@ jobs:
           fi
 
       - name: Build win64 Marc Shared image
+        if: steps.image_presence.outputs.needs_build == 'true'
         env:
           BUILDKIT_PROGRESS: plain
         run: |
@@ -249,7 +273,7 @@ jobs:
           exit "$status"
 
       - name: Upload Marc Shared image build log
-        if: ${{ always() }}
+        if: ${{ always() && steps.image_presence.outputs.needs_build == 'true' }}
         uses: actions/upload-artifact@043fb46d1a93c77aae656e7c1c64a875d1fc6a0a # v7.0.1
         with:
           name: marc-shared-image-build-log-${{ github.run_id }}-${{ github.run_attempt }}
@@ -258,13 +282,14 @@ jobs:
           retention-days: 14
 
       - name: Save FFmpeg source download cache
-        if: ${{ always() && steps.ffmpeg-download-cache.outputs.cache-hit != 'true' }}
+        if: ${{ always() && steps.image_presence.outputs.needs_build == 'true' && steps.ffmpeg-download-cache.outputs.cache-hit != 'true' }}
         uses: actions/cache/save@55cc8345863c7cc4c66a329aec7e433d2d1c52a9 # v6
         with:
           path: .cache/downloads
           key: ffmpeg-download-cache-${{ runner.os }}-${{ env.TARGET }}-${{ env.VARIANT }}-${{ hashFiles('download.sh', 'util/dl_functions.sh', 'variants/**', 'scripts.d/**', 'addins/**') }}
 
       - name: Push win64 Marc Shared image
+        if: steps.image_presence.outputs.needs_build == 'true'
         run: |
           source_image="$TARGET_REPO/win64-marc-shared:source-${{ steps.image-revision.outputs.sha }}"
           docker tag "$TARGET_REPO/win64-marc-shared:latest" "$source_image"
@@ -272,6 +297,7 @@ jobs:
           docker push "$source_image"
 
       - name: Trigger Marc Shared FFmpeg release
+        if: steps.image_presence.outputs.needs_build == 'true'
         env:
           GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
           IMAGE_INPUT_SHA: ${{ steps.image-revision.outputs.sha }}

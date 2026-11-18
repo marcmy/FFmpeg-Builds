@@ -152,6 +152,7 @@ jobs:
           fi
 
       - name: Ensure stable base images for the source revisions
+        id: base-images
         if: steps.image_presence.outputs.needs_build == 'true'
         env:
           BASE_INPUT_SHA: ${{ steps.image-revision.outputs.base_sha }}
@@ -197,6 +198,7 @@ jobs:
           else
             echo "Reusing base image for source revision ${BASE_INPUT_SHA}."
             docker buildx imagetools create \
+              --prefer-index=false \
               --tag "$TARGET_REPO/base:latest" \
               "$base_ref"
           fi
@@ -217,9 +219,19 @@ jobs:
           else
             echo "Reusing target base image for source revision ${TARGET_BASE_INPUT_SHA}."
             docker buildx imagetools create \
+              --prefer-index=false \
               --tag "$TARGET_REPO/base-win64:latest" \
               "$target_base_ref"
           fi
+
+          target_base_digest="$(docker buildx imagetools inspect --format '{{.Manifest.Digest}}' "$target_base_ref")"
+          if [[ ! "$target_base_digest" =~ ^sha256:[a-f0-9]{64}$ ]]; then
+            echo "::error::Could not resolve a valid digest for ${target_base_ref}."
+            exit 1
+          fi
+          target_base_image="${TARGET_REPO}/base-win64@${target_base_digest}"
+          printf 'target_base_image=%s\n' "$target_base_image" >> "$GITHUB_OUTPUT"
+          echo "Win64 dependency build base: ${target_base_image}"
 
           docker pull "$TARGET_REPO/base:latest"
           echo "Pinned base source: $base_ref"
@@ -239,6 +251,7 @@ jobs:
         if: steps.image_presence.outputs.needs_build == 'true'
         env:
           BUILDKIT_PROGRESS: plain
+          FFBUILD_TARGET_IMAGE: ${{ steps.base-images.outputs.target_base_image }}
         run: |
           mkdir -p logs
           set +e
@@ -250,11 +263,11 @@ jobs:
             echo "Image input revision: ${{ steps.image-revision.outputs.sha }}"
             echo "Base image input revision: ${{ steps.image-revision.outputs.base_sha }}"
             echo "Target base image input revision: ${{ steps.image-revision.outputs.target_base_sha }}"
+            echo "Win64 dependency build base: ${FFBUILD_TARGET_IMAGE:?Pinned base image is missing}"
             echo "UTC start: $(date -u +'%Y-%m-%dT%H:%M:%SZ')"
             echo
 
             FFBUILD_LOCAL_FINAL_CACHE=0 \
-            FFBUILD_TARGET_IMAGE="${TARGET_REPO}/base-win64:source-${{ steps.image-revision.outputs.target_base_sha }}" \
             FFBUILD_DOCKER_CACHE_FROM="type=registry,ref=${TARGET_REPO}/win64-marc-shared:buildcache" \
             FFBUILD_DOCKER_CACHE_TO="type=registry,ref=${TARGET_REPO}/win64-marc-shared:buildcache,mode=max" \
             QUICKBUILD=1 NOCLEAN=1 ./makeimage.sh "$TARGET" "$VARIANT"
